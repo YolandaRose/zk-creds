@@ -23,13 +23,14 @@ pub struct PassportDump {
     pub(crate) sig_alg: String,
 }
 
+// 计算econtent的散列
 impl PassportDump {
     pub(crate) fn econtent_hash(&self) -> [u8; HASH_LEN] {
         Sha256::digest(&self.econtent).into()
     }
 }
 
-// Tells serde how to deserialize bytes from base64
+// 告诉serde如何从base64中反序列化字节
 fn bytes_from_b64<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
 where
     D: Deserializer<'de>,
@@ -38,8 +39,7 @@ where
     base64::decode(b64_str.as_bytes()).map_err(|e| SError::custom(format!("{:?}", e)))
 }
 
-/// Prints all the information stored in a passport's machine-readable zone (MRZ), plus the hash of
-/// the biometrics
+// 打印护照的机器可读区域（MRZ）中存储的所有信息，以及生物特征的散列
 impl std::fmt::Debug for PassportDump {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         use crate::credentials::passport::params::*;

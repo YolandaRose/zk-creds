@@ -4,9 +4,6 @@ mod params;
 mod passport_dump;
 mod passport_info;
 mod preds;
-mod x509_issuer_pubkey;
-
-pub use x509_issuer_pubkey::load_pubkey_from_dump;
 
 use crate::credentials::common::sig_verif::load_issuer_pubkey;
 use crate::credentials::passport::{

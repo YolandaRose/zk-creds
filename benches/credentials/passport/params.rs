@@ -17,11 +17,8 @@ use ark_std::{
 };
 use lazy_static::lazy_static;
 
-// Our passport info is Data Group 1 (DG1) of the Essential Files (EF) of Logical Data Structure 1
-// (LDS1) of an Electronic Machine Readable Travel Document (eMRTD; aka "passport"). The format
-// used is TD3 (as opposed to TD1 or TD2).
-// The lengths of the fields below are derived from or directly given in ICAO doc 9303, part 10,
-// §4.7.1.3, which can be found at https://www.icao.int/publications/Documents/9303_p10_cons_en.pdf
+// 护照信息是电子机器可读旅行证件（eMRTD；又名“护照”）的逻辑数据结构1 （LDS1）的基本文件（EF）的数据组1 （DG1）。使用的格式是TD3（与TD1或TD2相对）。
+// 以下字段的长度是从ICAO doc 9303, part 10, §4.7.1.3, 可以在https://www.icao.int/publications/Documents/9303_p10_cons_en.pdf中找到
 pub(crate) const NAME_LEN: usize = 39;
 pub(crate) const DATE_LEN: usize = 6;
 pub(crate) const STATE_ID_LEN: usize = 3;
@@ -34,32 +31,31 @@ pub(crate) const NATIONALITY_OFFSET: usize = DOCUMENT_NUMBER_OFFSET + DOCUMENT_N
 pub(crate) const DOB_OFFSET: usize = NATIONALITY_OFFSET + STATE_ID_LEN;
 pub(crate) const EXPIRY_OFFSET: usize = DOB_OFFSET + DATE_LEN + 2;
 
-// The following values are specific to US passports, or possibly even just my US passport.
+// 以下值特定于美国护照
 
-// US passports use SHA-256 for their internal hash calculations, and they also use SHA-256 for the
-// final signature (RSA-PKCS1v1.5-SHA256)
+// 美国护照使用SHA-256进行内部散列计算，并且还使用SHA-256进行最终签名（RSA-PKCS1v1.5-SHA256）
 pub(crate) const HASH_LEN: usize = 32;
 pub(crate) const SIG_HASH_LEN: usize = 32;
 
-// These are intermediate values computed in the calculation of a passport's signature
+// 这些是计算护照签名时计算的中间值
 pub(crate) const PRE_ECONTENT_LEN: usize = 180;
 pub(crate) const ECONTENT_LEN: usize = 104;
-// The location of the DG1 hash inside pre-econtent
+// DG1散列在pre-econtent中的位置
 pub(crate) const DG1_HASH_OFFSET: usize = 31;
-// The location of the DG2 hash inside pre-econtent
+// DG2散列在pre-econtent中的位置
 pub(crate) const DG2_HASH_OFFSET: usize = 70;
-// The location of the pre-econtent hash inside econtent
+// pre-econtent散列在econtent中的位置
 pub(crate) const PRE_ECONTENT_HASH_OFFSET: usize = 72;
 
-// Pick a pairing engine and a curve defined over E::Fr
+// 选择一个配对引擎和一个定义在E::Fr上的曲线
 pub(crate) type E = Bls12_381;
 pub(crate) type Fr = <E as PairingEngine>::Fr;
 
-// Pick a two-to-one CRH
+// 选择一个两个到一的CRH
 pub(crate) type H = zkcreds::poseidon_utils::Bls12PoseidonCrh;
 pub(crate) type HG = zkcreds::poseidon_utils::Bls12PoseidonCrh;
 
-// Pick a commitment scheme
+// 选择一个承诺方案
 pub(crate) type PassportComScheme = zkcreds::poseidon_utils::Bls12PoseidonCommitter;
 pub(crate) type PassportComSchemeG = zkcreds::poseidon_utils::Bls12PoseidonCommitter;
 
@@ -68,7 +64,7 @@ pub(crate) type ComForest = zkcreds::com_forest::ComForest<Fr, H, PassportComSch
 pub(crate) type ComTreePath = zkcreds::com_tree::ComTreePath<Fr, H, PassportComScheme>;
 pub(crate) type ComForestRoots = zkcreds::com_forest::ComForestRoots<Fr, H>;
 
-/// Type aliases for Groth16 stuff
+// Groth16类型的别名
 pub(crate) type PredProvingKey = ZkcredsPredPk<
     Bls12_381,
     PersonalInfo,
@@ -109,7 +105,7 @@ pub(crate) type TreeProof =
 pub(crate) type ForestProof =
     ZkcredsForestProof<Bls12_381, PersonalInfo, PassportComScheme, PassportComSchemeG, H, HG>;
 
-// Set params
+// 设置参数
 lazy_static! {
     pub(crate) static ref PASSPORT_COM_PARAM: <PassportComScheme as CommitmentScheme>::Parameters = {
         let mut rng = {
