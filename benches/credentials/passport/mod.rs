@@ -4,9 +4,12 @@ mod params;
 mod passport_dump;
 mod passport_info;
 mod preds;
-mod sig_verif;
+mod x509_issuer_pubkey;
 
-use crate::passport::{
+pub use x509_issuer_pubkey::load_pubkey_from_dump;
+
+use crate::credentials::common::sig_verif::load_issuer_pubkey;
+use crate::credentials::passport::{
     issuance_checker::{IssuanceReq, PassportHashChecker},
     params::{
         ComForest, ComForestRoots, ComTree, ComTreePath, ForestProof, ForestProvingKey,
@@ -20,7 +23,6 @@ use crate::passport::{
         AgeAndExpiryChecker, AgeChecker, AgeFaceExpiryChecker, AgeMultishowExpiryChecker,
         ExpiryChecker, FaceChecker,
     },
-    sig_verif::load_usa_pubkey,
 };
 
 use zkcreds::{
@@ -47,19 +49,18 @@ const NUM_TREES: usize = 2usize.pow(LOG2_NUM_TREES);
 
 const POSEIDON_WIDTH: u8 = 5;
 
-// Sample parameters for passport validation. All passports must expire some time after TODAY, and
-// be issued by ISSUING_STATE
+//护照验证的示例参数。所有护照必须在今天之后到期，且由ISSUING_STATE颁发
 const TODAY: u32 = 20220101u32;
 const MAX_VALID_YEARS: u32 = 10u32;
 const TWENTY_ONE_YEARS_AGO: u32 = TODAY - 210000;
 const ISSUING_STATE: [u8; STATE_ID_LEN] = *b"USA";
 
 fn load_dump() -> PassportDump {
-    let file = File::open("benches/passport/passport_dump.json").unwrap();
+    let file = File::open("benches/credentials/passport/passport_dump.json").unwrap();
     serde_json::from_reader(file).unwrap()
 }
 
-fn rand_tree<R: Rng>(rng: &mut R) -> ComTree {
+fn rand_tree<R: Rng>(rng: &mut R) -> ComTree {//初始化树参数
     let mut tree = ComTree::empty(MERKLE_CRH_PARAM.clone(), TREE_HEIGHT);
     let idx: u16 = rng.gen();
     let leaf = Com::<PassportComScheme>::rand(rng);
@@ -67,22 +68,22 @@ fn rand_tree<R: Rng>(rng: &mut R) -> ComTree {
     tree
 }
 
-fn rand_forest<R: Rng>(rng: &mut R) -> ComForest {
+fn rand_forest<R: Rng>(rng: &mut R) -> ComForest {//初始化森林
     let trees = (0..NUM_TREES).map(|_| rand_tree(rng)).collect();
     ComForest { trees }
 }
 
-struct IssuerState {
-    /// The forest of commitments
+struct IssuerState {//发行方状态
+    // 承诺的森林
     com_forest: ComForest,
-    /// The next free tree to insert a commitment
+    // 下一个空闲树来插入承诺
     next_free_tree: usize,
-    /// The next free leaf in that tree to insert a commitment
+    // 下一个空闲叶子来插入承诺
     next_free_leaf: u64,
 }
 
-fn gen_issuance_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingKey) {
-    // Generate the hash checker circuit's CRS
+fn gen_issuance_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingKey) {//生成颁发凭证的CRS
+    // 生成哈希检查器电路的CRS
     let pk = zkcreds::pred::gen_pred_crs::<
         _,
         _,
@@ -99,8 +100,8 @@ fn gen_issuance_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingKey) {
     (pk.clone(), pk.prepare_verifying_key())
 }
 
-fn gen_agefaceexpiry_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingKey) {
-    // Generate the hash checker circuit's CRS
+fn gen_agefaceexpiry_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingKey) {//生成年龄、面部和到期日的CRS
+    // 生成哈希检查器电路的CRS
     let pk = zkcreds::pred::gen_pred_crs::<
         _,
         _,
@@ -117,8 +118,8 @@ fn gen_agefaceexpiry_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingK
     (pk.clone(), pk.prepare_verifying_key())
 }
 
-fn gen_expiry_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingKey) {
-    // Generate the hash checker circuit's CRS
+fn gen_expiry_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingKey) {//生成到期日的CRS
+    // 生成哈希检查器电路的CRS
     let pk = zkcreds::pred::gen_pred_crs::<
         _,
         _,
@@ -135,8 +136,8 @@ fn gen_expiry_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingKey) {
     (pk.clone(), pk.prepare_verifying_key())
 }
 
-fn gen_ageexpiry_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingKey) {
-    // Generate the hash checker circuit's CRS
+fn gen_ageexpiry_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingKey) {//生成年龄和到期日的CRS
+    // 生成哈希检查器电路的CRS
     let pk = zkcreds::pred::gen_pred_crs::<
         _,
         _,
@@ -153,10 +154,10 @@ fn gen_ageexpiry_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingKey) 
     (pk.clone(), pk.prepare_verifying_key())
 }
 
-fn gen_multishow_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingKey) {
+fn gen_multishow_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingKey) {//生成多重展示的CRS
     let checker = get_multishow_checker(&PersonalInfo::default());
 
-    // Generate the hash checker circuit's CRS
+    // 生成哈希检查器电路的CRS
     let pk = zkcreds::pred::gen_pred_crs::<
         _,
         _,
@@ -173,8 +174,8 @@ fn gen_multishow_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingKey) 
     (pk.clone(), pk.prepare_verifying_key())
 }
 
-fn gen_agemultishowexpiry_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingKey) {
-    // Generate the hash checker circuit's CRS
+fn gen_agemultishowexpiry_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingKey) {//生成年龄、多重展示和到期日的CRS
+    // 生成哈希检查器电路的CRS
     let pk = zkcreds::pred::gen_pred_crs::<
         _,
         _,
@@ -194,8 +195,8 @@ fn gen_agemultishowexpiry_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerif
     (pk.clone(), pk.prepare_verifying_key())
 }
 
-fn gen_tree_crs<R: Rng>(rng: &mut R) -> (TreeProvingKey, TreeVerifyingKey) {
-    // Generate the predicate circuit's CRS
+fn gen_tree_crs<R: Rng>(rng: &mut R) -> (TreeProvingKey, TreeVerifyingKey) {//生成树的CRS
+    // 生成谓词电路的CRS
     let pk = zkcreds::com_tree::gen_tree_memb_crs::<
         _,
         Bls12_381,
@@ -210,8 +211,8 @@ fn gen_tree_crs<R: Rng>(rng: &mut R) -> (TreeProvingKey, TreeVerifyingKey) {
     (pk.clone(), pk.prepare_verifying_key())
 }
 
-fn gen_forest_crs<R: Rng>(rng: &mut R) -> (ForestProvingKey, ForestVerifyingKey) {
-    // Generate the predicate circuit's CRS
+fn gen_forest_crs<R: Rng>(rng: &mut R) -> (ForestProvingKey, ForestVerifyingKey) {//生成森林的CRS
+    // 生成谓词电路的CRS
     let pk = zkcreds::com_forest::gen_forest_memb_crs::<
         _,
         Bls12_381,
@@ -226,7 +227,7 @@ fn gen_forest_crs<R: Rng>(rng: &mut R) -> (ForestProvingKey, ForestVerifyingKey)
     (pk.clone(), pk.prepare_verifying_key())
 }
 
-/// Makes a random new issuer state
+// 生成一个新的发行方状态
 fn init_issuer<R: Rng>(rng: &mut R) -> IssuerState {
     let com_forest = rand_forest(rng);
     let next_free_tree = rng.gen_range(0..NUM_TREES);
@@ -239,28 +240,28 @@ fn init_issuer<R: Rng>(rng: &mut R) -> IssuerState {
     }
 }
 
-/// With their passport, a user constructs a `PersonalInfo` struct and requests issuance
+// 用户使用他们的护照构造一个`PersonalInfo`结构并请求颁发凭证
 fn user_req_issuance<R: Rng>(
     rng: &mut R,
     c: &mut Criterion,
     issuance_pk: &PredProvingKey,
 ) -> (PersonalInfo, IssuanceReq) {
-    // Load the passport and parse it into a `PersonalInfo` struct
+    // 加载护照并解析为`PersonalInfo`结构
     let dump = load_dump();
     let my_info = PersonalInfo::from_passport(rng, &dump, TODAY, MAX_VALID_YEARS);
     let attrs_com = my_info.commit();
 
-    // Make a hash checker struct using our private data
+    // 使用私有数据生成一个哈希检查器结构
     let hash_checker =
         PassportHashChecker::from_passport(&dump, ISSUING_STATE, TODAY, MAX_VALID_YEARS);
 
-    // Prove the passport hash is correctly computed
+    // 证明护照哈希正确计算
     c.bench_function("Passport: proving birth", |b| {
         b.iter(|| prove_birth(rng, issuance_pk, hash_checker.clone(), my_info.clone()).unwrap())
     });
     let hash_proof = prove_birth(rng, issuance_pk, hash_checker, my_info.clone()).unwrap();
 
-    // Now put together the issuance request
+    // 构建颁发请求
     let req = IssuanceReq {
         attrs_com,
         econtent_hash: dump.econtent_hash(),
@@ -271,17 +272,17 @@ fn user_req_issuance<R: Rng>(
     (my_info, req)
 }
 
-/// An issuer takes an issuance request and validates it
+// 发行方接收颁发请求并验证
 fn issue(
     c: &mut Criterion,
     state: &mut IssuerState,
     birth_vk: &PredVerifyingKey,
     req: &IssuanceReq,
 ) -> ComTreePath {
-    // Check that the hash was computed correctly and the hash's signature is correct
+    // 检查哈希是否正确计算且哈希的签名正确
     let hash_checker =
         PassportHashChecker::from_issuance_req(req, ISSUING_STATE, TODAY, MAX_VALID_YEARS);
-    let sig_pubkey = load_usa_pubkey();
+    let sig_pubkey = load_issuer_pubkey();
     c.bench_function("Passport: verifying birth+sig", |b| {
         b.iter(|| {
             assert!(
@@ -291,23 +292,23 @@ fn issue(
         })
     });
 
-    // Insert
+    // 插入
     state.com_forest.trees[state.next_free_tree].insert(state.next_free_leaf, &req.attrs_com)
 }
 
-fn get_age_checker() -> AgeChecker {
+fn get_age_checker() -> AgeChecker {//获取年龄检查器
     AgeChecker {
         threshold_dob: Fr::from(TWENTY_ONE_YEARS_AGO),
     }
 }
 
-fn get_expiry_checker() -> ExpiryChecker {
+fn get_expiry_checker() -> ExpiryChecker {//获取到期日检查器
     ExpiryChecker {
         threshold_expiry: Fr::from(TODAY),
     }
 }
 
-fn get_face_checker(info: &PersonalInfo) -> FaceChecker {
+fn get_face_checker(info: &PersonalInfo) -> FaceChecker {//获取面部检查器
     FaceChecker {
         face_hash: info.biometrics_hash(),
     }
@@ -333,7 +334,7 @@ fn get_multishow_checker(info: &PersonalInfo) -> RevealingMultishowChecker<Fr> {
     }
 }
 
-fn get_agefaceexpiry_checker(info: &PersonalInfo) -> AgeFaceExpiryChecker {
+fn get_agefaceexpiry_checker(info: &PersonalInfo) -> AgeFaceExpiryChecker {//获取年龄、面部和到期日的检查器
     AgeFaceExpiryChecker {
         age_checker: get_age_checker(),
         face_checker: get_face_checker(info),
@@ -341,7 +342,7 @@ fn get_agefaceexpiry_checker(info: &PersonalInfo) -> AgeFaceExpiryChecker {
     }
 }
 
-/// Returns an instance of an `AgeAndExpiryChecker`. Public parameters are the DOB and expiry dates
+// 返回一个`AgeAndExpiryChecker`实例。公参数是出生日期和到期日期
 fn get_ageexpiry_checker() -> AgeAndExpiryChecker {
     AgeAndExpiryChecker {
         age_checker: get_age_checker(),
@@ -349,7 +350,7 @@ fn get_ageexpiry_checker() -> AgeAndExpiryChecker {
     }
 }
 
-fn get_agemultishowexpiry_checker(info: &PersonalInfo) -> AgeMultishowExpiryChecker {
+fn get_agemultishowexpiry_checker(info: &PersonalInfo) -> AgeMultishowExpiryChecker {//获取年龄、多重展示和到期日的检查器
     AgeMultishowExpiryChecker {
         age_checker: get_age_checker(),
         multishow_checker: get_multishow_checker(info),
@@ -357,7 +358,7 @@ fn get_agemultishowexpiry_checker(info: &PersonalInfo) -> AgeMultishowExpiryChec
     }
 }
 
-fn user_prove_tree_memb<R: Rng>(
+fn user_prove_tree_memb<R: Rng>(//用户证明树成员
     rng: &mut R,
     c: &mut Criterion,
     auth_path: &ComTreePath,
@@ -376,7 +377,7 @@ fn user_prove_tree_memb<R: Rng>(
         .unwrap()
 }
 
-fn user_prove_forest_memb<R: Rng>(
+fn user_prove_forest_memb<R: Rng>(//用户证明森林成员
     rng: &mut R,
     c: &mut Criterion,
     roots: &ComForestRoots,
@@ -396,7 +397,7 @@ fn user_prove_forest_memb<R: Rng>(
         .unwrap()
 }
 
-/// User constructs a predicate proof for their age and face
+// 用户构造年龄和面部的谓词证明
 fn user_prove_pred<R, P>(
     rng: &mut R,
     c: &mut Criterion,
@@ -411,7 +412,7 @@ where
     P: Clone
         + PredicateChecker<Fr, PersonalInfo, PersonalInfoVar, PassportComScheme, PassportComSchemeG>,
 {
-    // Compute the proof wrt the public parameters
+    // 计算公参数的证明
     c.bench_function(bench_name, |b| {
         b.iter(|| {
             prove_pred(rng, pk, checker.clone(), info.clone(), auth_path).unwrap();
@@ -419,7 +420,7 @@ where
     });
     let proof = prove_pred(rng, pk, checker.clone(), info.clone(), auth_path).unwrap();
 
-    // DEBUG: Assert that the proof verifies
+    // 断言证明验证
     assert!(zkcreds::pred::verify_pred(
         &pk.prepare_verifying_key(),
         &proof,
@@ -432,7 +433,7 @@ where
     proof
 }
 
-fn user_link<R: Rng + CryptoRng>(
+fn user_link<R: Rng + CryptoRng>(//用户链接
     rng: &mut R,
     c: &mut Criterion,
     proof_bench_name: &str,
@@ -475,10 +476,10 @@ fn user_link<R: Rng + CryptoRng>(
     println!("The bouncer unlatches the velvet rope. The user walks through.");
 }
 
-pub fn bench_passport(c: &mut Criterion) {
+pub fn bench_passport(c: &mut Criterion) {//护照验证基准测试
     let mut rng = ark_std::test_rng();
 
-    // Generate all the Groth16 and Groth-Sahai proving and verifying keys
+    // 生成所有Groth16和Groth-Sahai的证明和验证密钥
     let (issuance_pk, issuance_vk) = gen_issuance_crs(&mut rng);
     let (agefaceexpiry_pk, agefaceexpiry_vk) = gen_agefaceexpiry_crs(&mut rng);
     let (agemultishowexpiry_pk, agemultishowexpiry_vk) = gen_agemultishowexpiry_crs(&mut rng);
@@ -488,17 +489,17 @@ pub fn bench_passport(c: &mut Criterion) {
     let (tree_pk, tree_vk) = gen_tree_crs(&mut rng);
     let (forest_pk, forest_vk) = gen_forest_crs(&mut rng);
 
-    // Generate a random initial state for the issuer
+    // 生成发行方初始状态
     let mut issuer_state = init_issuer(&mut rng);
 
-    // The user dumps their passport and makes an issuance request
+    // 用户dump护照并发出凭证请求
     let (personal_info, issuance_req) = user_req_issuance(&mut rng, c, &issuance_pk);
     let cred = personal_info.commit();
 
-    // The issuer validates the passport and issues the credential
+    // 发行方验证护照并颁发凭证
     let auth_path = issue(c, &mut issuer_state, &issuance_vk, &issuance_req);
 
-    let agefaceexpiry_proof = user_prove_pred(
+    let agefaceexpiry_proof = user_prove_pred(//用户证明年龄、面部和到期日
         &mut rng,
         c,
         "Passport: proving age+face+expiry",
@@ -507,7 +508,7 @@ pub fn bench_passport(c: &mut Criterion) {
         &personal_info,
         &auth_path,
     );
-    let agemultishowexpiry_proof = user_prove_pred(
+    let agemultishowexpiry_proof = user_prove_pred(//用户证明年龄、多重展示和到期日
         &mut rng,
         c,
         "Passport: proving age+multishow+expiry",
@@ -516,7 +517,7 @@ pub fn bench_passport(c: &mut Criterion) {
         &personal_info,
         &auth_path,
     );
-    let ageexpiry_proof = user_prove_pred(
+    let ageexpiry_proof = user_prove_pred(//用户证明年龄和到期日
         &mut rng,
         c,
         "Passport: proving age+expiry",
@@ -525,7 +526,7 @@ pub fn bench_passport(c: &mut Criterion) {
         &personal_info,
         &auth_path,
     );
-    let expiry_proof = user_prove_pred(
+    let expiry_proof = user_prove_pred(//用户证明到期日
         &mut rng,
         c,
         "Passport: proving expiry",
@@ -534,7 +535,7 @@ pub fn bench_passport(c: &mut Criterion) {
         &personal_info,
         &auth_path,
     );
-    let multishow_proof = user_prove_pred(
+    let multishow_proof = user_prove_pred(//用户证明多重展示
         &mut rng,
         c,
         "Passport: proving multishow",
@@ -544,9 +545,9 @@ pub fn bench_passport(c: &mut Criterion) {
         &auth_path,
     );
 
-    // User gets all the roots from the issuer
+    // 用户从发行方获取所有根
     let roots = issuer_state.com_forest.roots();
-    // Now user proves tree and forest membership
+    // 成员证明：用户证明树和森林成员
 
     let tree_proof = user_prove_tree_memb(&mut rng, c, &auth_path, &tree_pk, cred);
     let forest_proof = user_prove_forest_memb(&mut rng, c, &roots, &auth_path, &forest_pk, cred);

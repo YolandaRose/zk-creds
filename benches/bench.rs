@@ -1,14 +1,14 @@
 use criterion::{criterion_group, criterion_main};
 
 mod com_scaling;
+mod credentials;
 mod empty;
 mod microbenches;
-mod passport;
 mod util;
 
+use credentials::passport::bench_passport;
 use empty::bench_empty;
 use microbenches::microbenches;
-use passport::bench_passport;
 use util::new_size_file as setup; // Gotta set up logging proof sizes to CSV
 
 criterion_group!(

@@ -4,6 +4,10 @@ Cargo.lock
 michaels_passport.json
 michaels_isureq.txt
 
+# Local issuer keys (use issuer_demo_*.pem in repo for demos)
+benches/credentials/passport/issuer_priv.pem
+benches/credentials/passport/issuer_pubkey.pem
+
 /pkg
 
 .env

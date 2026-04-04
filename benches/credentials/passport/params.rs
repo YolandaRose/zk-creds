@@ -1,4 +1,4 @@
-use crate::passport::passport_info::{PersonalInfo, PersonalInfoVar};
+use crate::credentials::passport::passport_info::{PersonalInfo, PersonalInfoVar};
 
 use zkcreds::proof_data_structures::{
     ForestProof as ZkcredsForestProof, ForestProvingKey as ZkcredsForestPk,
