@@ -18,7 +18,6 @@ use ark_std::{
 use lazy_static::lazy_static;
 
 // 护照信息是电子机器可读旅行证件（eMRTD；又名“护照”）的逻辑数据结构1 （LDS1）的基本文件（EF）的数据组1 （DG1）。使用的格式是TD3（与TD1或TD2相对）。
-// 以下字段的长度是从ICAO doc 9303, part 10, §4.7.1.3, 可以在https://www.icao.int/publications/Documents/9303_p10_cons_en.pdf中找到
 pub(crate) const NAME_LEN: usize = 39;
 pub(crate) const DATE_LEN: usize = 6;
 pub(crate) const STATE_ID_LEN: usize = 3;
@@ -37,7 +36,7 @@ pub(crate) const EXPIRY_OFFSET: usize = DOB_OFFSET + DATE_LEN + 2;
 pub(crate) const HASH_LEN: usize = 32;
 pub(crate) const SIG_HASH_LEN: usize = 32;
 
-// 这些是计算护照签名时计算的中间值
+// 计算护照签名时计算的中间值
 pub(crate) const PRE_ECONTENT_LEN: usize = 180;
 pub(crate) const ECONTENT_LEN: usize = 104;
 // DG1散列在pre-econtent中的位置

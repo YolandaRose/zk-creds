@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main};
+﻿use criterion::{criterion_group, criterion_main};
 
 mod com_scaling;
 mod credentials;
@@ -6,7 +6,9 @@ mod empty;
 mod microbenches;
 mod util;
 
+use credentials::employee_id::bench_employee_id;
 use credentials::passport::bench_passport;
+use credentials::student_id::bench_student_id;
 use empty::bench_empty;
 use microbenches::microbenches;
 use util::new_size_file as setup; // Gotta set up logging proof sizes to CSV
@@ -14,6 +16,9 @@ use util::new_size_file as setup; // Gotta set up logging proof sizes to CSV
 criterion_group!(
     benches,
     bench_passport,
+    bench_student_id,
+    bench_employee_id,
+    /*
     bench_empty,
     com_scaling::bench_pred_proof_0::bench_pred_proof_0,
     com_scaling::bench_pred_proof_16::bench_pred_proof_16,
@@ -32,5 +37,6 @@ criterion_group!(
     com_scaling::bench_pred_proof_224::bench_pred_proof_224,
     com_scaling::bench_pred_proof_240::bench_pred_proof_240,
     com_scaling::bench_pred_proof_256::bench_pred_proof_256
+    */
 );
 criterion_main!(setup, benches, microbenches);

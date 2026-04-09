@@ -1,4 +1,4 @@
-mod ark_sha256;
+pub mod ark_sha256;
 mod issuance_checker;
 mod params;
 mod passport_dump;

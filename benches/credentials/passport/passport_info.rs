@@ -29,7 +29,7 @@ use ark_relations::{
 };
 use ark_std::rand::Rng;
 
-/// Simple blob containing user's biometrics
+// 包含用户生物特征的简单blob
 #[derive(Clone, Default)]
 pub(crate) struct Biometrics(Vec<u8>);
 
@@ -39,7 +39,7 @@ impl Biometrics {
     }
 }
 
-/// Stores a subset of the info found in data groups 1 and 2 of a passport
+// 存储护照中数据组1和2中的子集信息
 #[derive(Clone)]
 pub(crate) struct PersonalInfo {
     nonce: ComNonce,
@@ -65,7 +65,7 @@ impl Default for PersonalInfo {
     }
 }
 
-/// Stores a subset of the info found in data groups 1 and 2 of a passport
+// 存储护照中数据组1和2中的子集信息
 #[derive(Clone)]
 pub(crate) struct PersonalInfoVar {
     nonce: ComNonce,
@@ -77,33 +77,28 @@ pub(crate) struct PersonalInfoVar {
     pub(crate) biometric_hash: Bytestring<Fr>,
 }
 
-/// Converts a date string of the form YYMMDD to a u32 whose base-10 representation is YYYYMMDD.
-/// `not_after` is the soonest day in the 21st century after which the input would not make sense,
-/// e.g., a birthdate wouldn't make sense if it were after today, and a document expiry date
-/// wouldn't be 20 years in the future.
+// 将YYMMDD形式的日期字符串转换为u32，其十进制表示为YYYYMMDD。
+// `not_after`是21世纪最早的一天，之后输入将不再有意义，例如，出生日期如果晚于今天将不再有意义，护照到期日期如果超过20年将不再有意义。
 fn date_to_u32(date: &[u8], not_after: u32) -> u32 {
     assert_eq!(date.len(), DATE_LEN);
 
     let century = 1000000;
     let twenty_first_century = 20 * century;
 
-    // Converts ASCII numbers to the numbers they represent. E.g., int(b"9") = 9 (mod |Fr|)
+    // 将ASCII数字转换为它们表示的数字。例如，int(b"9") = 9 (mod |Fr|)
     fn int(char: u8) -> u32 {
         (char as u32) - 48
     }
 
-    // Convert the year, month, and day separately. b"YY" becomes YY (mod |Fr|), etc.
+    // 分别转换年、月和日。b"YY"成为YY (mod |Fr|), etc.
     let year = (int(date[0]) * 10) + int(date[1]);
     let month = (int(date[2]) * 10) + int(date[3]);
     let day = (int(date[4]) * 10) + int(date[5]);
 
-    // Now combine the values by shifting and adding. The year is only given as YY so we don't
-    // immediately have the most significant digits of the year. Assume for now that it's the 21st
-    // century
+    // 现在通过移位和添加来组合值。年份只给出为YY，所以我们不立即拥有年份的最高有效数字。目前假设它是21世纪
     let mut d = twenty_first_century + (year * 10000) + (month * 100) + day;
 
-    // If the date is not from the 21st century, then d exceeds the `not_after` limit. If that's
-    // the case remove 100 years
+    // 如果日期不是21世纪，那么d超过`not_after`限制。如果是这样的话，那就去掉100年
     if d > not_after {
         d -= century;
     }
@@ -112,7 +107,7 @@ fn date_to_u32(date: &[u8], not_after: u32) -> u32 {
 }
 
 impl PersonalInfo {
-    /// Constructs a new `PersonalInfo`, sampling a random nonce for commitment
+    // 构造一个新的`PersonalInfo`，采样一个随机nonce用于承诺
     pub(crate) fn new<R: Rng>(
         rng: &mut R,
         nationality: [u8; STATE_ID_LEN],
@@ -135,28 +130,24 @@ impl PersonalInfo {
         }
     }
 
-    /// Converts the given passport dump into a structured attribute struct. Requires `today` as an
-    /// integer whose base-10 representation is of the form YYYYMMDD. `max_valid_years` is the
-    /// longest that a passport can be valid, in years.
+    // 将给定的护照dump转换为结构化属性结构。需要`today`作为整数，其十进制表示为YYYYMMDD形式。`max_valid_years`是护照最长有效期，以年为单位。
     pub fn from_passport<R: Rng>(
         rng: &mut R,
         dump: &PassportDump,
         today: u32,
         max_valid_years: u32,
     ) -> PersonalInfo {
-        // Create an empty info struct that we'll fill with data
+        // 创建一个空的信息结构，我们将在其中填充数据
         let mut info = PersonalInfo {
             nonce: ComNonce::rand(rng),
             seed: Fr::rand(rng),
             ..Default::default()
         };
 
-        // The earliest time after which expiry doesn't make sense. This is used to parse the
-        // underdefined date format in the passport
+        // 最早的时间，之后到期将不再有意义。这用于解析护照中的未定义日期格式
         let expiry_not_after = today + max_valid_years * 10000u32;
 
-        // Extract the nationality, name, and DOB from the DG1 blob. The biometrics are set equal
-        // to the entire DG2 blob
+        // 从DG1 blob中提取国籍、姓名和出生日期。生物特征被设置为整个DG2 blob
         info.nationality
             .copy_from_slice(&dump.dg1[NATIONALITY_OFFSET..NATIONALITY_OFFSET + STATE_ID_LEN]);
         info.name
@@ -177,10 +168,9 @@ impl PersonalInfo {
 }
 
 impl Attrs<Fr, PassportComScheme> for PersonalInfo {
-    /// Serializes the attrs into bytes
+    // 将属性序列化为字节
     fn to_bytes(&self) -> Vec<u8> {
-        // DOB bytes need to match the PersonalInfoVar version, which is an FpVar. Convert to Fr
-        // before serializing
+        // DOB字节需要匹配PersonalInfoVar版本，这是一个FpVar。在序列化之前转换为Fr
         let dob = Fr::from(self.dob);
         let passport_expiry = Fr::from(self.passport_expiry);
         let biometric_hash = self.biometrics.hash();
@@ -261,7 +251,7 @@ impl AttrsVar<Fr, PersonalInfo, PassportComScheme, PassportComSchemeG> for Perso
         let biometric_hash =
             Bytestring::new_witness(ns!(cs, "biometric_hash"), || Ok(biometric_hash))?;
 
-        // Return the witnessed values
+        // 返回见证的值
         Ok(PersonalInfoVar {
             nonce,
             seed,

@@ -39,7 +39,7 @@ Interact with the demo to get an idea for how arbitrary attribute fields can be 
 
 You can run benchmarks using `cargo bench`. This will produce `criterion` benchmarks in `target/criterion/`. It will also create `proof_sizes.csv`, which records proof sizes across various benchmarks.
 
-The passport benchmarks will error if you do not provide a valid (USA only, currently) passport dump.
+The passport benchmarks will error if you do not provide a valid passport dump. The student-ID benchmark expects `benches/credentials/student_id/student_card.json` (copy from `student_card.example.json`, then run `sign_student_record.ps1` with the same demo issuer key as the passport bench).
 
 ### Passport benches
 

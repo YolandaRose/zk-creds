@@ -12,6 +12,7 @@ use ark_relations::{
     r1cs::{ConstraintSystemRef, SynthesisError},
 };
 
+// 年龄检查器
 #[derive(Clone, Default)]
 pub(crate) struct AgeChecker {
     pub(crate) threshold_dob: Fr,
@@ -20,13 +21,13 @@ pub(crate) struct AgeChecker {
 impl PredicateChecker<Fr, PersonalInfo, PersonalInfoVar, PassportComScheme, PassportComSchemeG>
     for AgeChecker
 {
-    /// Returns whether or not the predicate was satisfied
+    // 返回谓词是否满足
     fn pred(
         self,
         cs: ConstraintSystemRef<Fr>,
         attrs: &PersonalInfoVar,
     ) -> Result<(), SynthesisError> {
-        // Assert that attrs.dob ≤ threshold_dob
+        // 断言 attrs.dob ≤ threshold_dob
         let threshold_dob =
             FpVar::<Fr>::new_input(ns!(cs, "threshold dob"), || Ok(self.threshold_dob))?;
         attrs
@@ -34,13 +35,14 @@ impl PredicateChecker<Fr, PersonalInfo, PersonalInfoVar, PassportComScheme, Pass
             .enforce_cmp(&threshold_dob, core::cmp::Ordering::Less, true)
     }
 
-    /// This outputs the field elements corresponding to the public inputs of this predicate.
+    // 输出与谓词公共输入对应的字段元素。这不包括 `attrs`。
     /// This DOES NOT include `attrs`.
     fn public_inputs(&self) -> Vec<Fr> {
         vec![self.threshold_dob]
     }
 }
 
+// 有效期检查器
 #[derive(Clone, Default)]
 pub(crate) struct ExpiryChecker {
     pub(crate) threshold_expiry: Fr,
@@ -49,13 +51,13 @@ pub(crate) struct ExpiryChecker {
 impl PredicateChecker<Fr, PersonalInfo, PersonalInfoVar, PassportComScheme, PassportComSchemeG>
     for ExpiryChecker
 {
-    /// Returns whether or not the predicate was satisfied
+    // 返回谓词是否满足
     fn pred(
         self,
         cs: ConstraintSystemRef<Fr>,
         attrs: &PersonalInfoVar,
     ) -> Result<(), SynthesisError> {
-        // Assert that attrs.passport_expiry > threshold_expiry
+        // 断言 attrs.passport_expiry > threshold_expiry
         let threshold_expiry =
             FpVar::<Fr>::new_input(ns!(cs, "threshold expiry"), || Ok(self.threshold_expiry))?;
         attrs
@@ -63,13 +65,13 @@ impl PredicateChecker<Fr, PersonalInfo, PersonalInfoVar, PassportComScheme, Pass
             .enforce_cmp(&threshold_expiry, core::cmp::Ordering::Greater, false)
     }
 
-    /// This outputs the field elements corresponding to the public inputs of this predicate.
-    /// This DOES NOT include `attrs`.
+    // 输出与谓词公共输入对应的字段元素。这不包括 `attrs`。
     fn public_inputs(&self) -> Vec<Fr> {
         vec![self.threshold_expiry]
     }
 }
 
+// 人脸特征检查器
 #[derive(Clone, Default)]
 pub(crate) struct FaceChecker {
     pub(crate) face_hash: [u8; HASH_LEN],
@@ -78,24 +80,25 @@ pub(crate) struct FaceChecker {
 impl PredicateChecker<Fr, PersonalInfo, PersonalInfoVar, PassportComScheme, PassportComSchemeG>
     for FaceChecker
 {
-    /// Returns whether or not the predicate was satisfied
+    // 返回谓词是否满足
     fn pred(
         self,
         cs: ConstraintSystemRef<Fr>,
         attrs: &PersonalInfoVar,
     ) -> Result<(), SynthesisError> {
-        // Assert that the given face hash is the same as the attr's biometric hash
+        // 断言给定的面哈希与属性的人脸哈希相同
         let face_hash = UInt8::new_input_vec(ns!(cs, "face hash"), &self.face_hash)?;
         face_hash.enforce_equal(&attrs.biometric_hash.0)
     }
 
-    /// This outputs the field elements corresponding to the public inputs of this predicate.
+    // 输出与谓词公共输入对应的字段元素。这不包括 `attrs`。
     /// This DOES NOT include `attrs`.
     fn public_inputs(&self) -> Vec<Fr> {
         self.face_hash.to_field_elements().unwrap()
     }
 }
 
+// 年龄人脸有效期检查器
 #[derive(Clone, Default)]
 pub(crate) struct AgeFaceExpiryChecker {
     pub(crate) age_checker: AgeChecker,
@@ -106,7 +109,7 @@ pub(crate) struct AgeFaceExpiryChecker {
 impl PredicateChecker<Fr, PersonalInfo, PersonalInfoVar, PassportComScheme, PassportComSchemeG>
     for AgeFaceExpiryChecker
 {
-    /// Returns whether or not the predicate was satisfied
+    // 返回谓词是否满足
     fn pred(
         self,
         cs: ConstraintSystemRef<Fr>,
@@ -119,7 +122,7 @@ impl PredicateChecker<Fr, PersonalInfo, PersonalInfoVar, PassportComScheme, Pass
         Ok(())
     }
 
-    /// This outputs the field elements corresponding to the public inputs of this predicate.
+    // 输出与谓词公共输入对应的字段元素。这不包括 `attrs`。
     /// This DOES NOT include `attrs`.
     fn public_inputs(&self) -> Vec<Fr> {
         [
@@ -131,6 +134,7 @@ impl PredicateChecker<Fr, PersonalInfo, PersonalInfoVar, PassportComScheme, Pass
     }
 }
 
+// 年龄和有效期检查器
 #[derive(Clone, Default)]
 pub(crate) struct AgeAndExpiryChecker {
     pub(crate) age_checker: AgeChecker,
@@ -140,7 +144,7 @@ pub(crate) struct AgeAndExpiryChecker {
 impl PredicateChecker<Fr, PersonalInfo, PersonalInfoVar, PassportComScheme, PassportComSchemeG>
     for AgeAndExpiryChecker
 {
-    /// Returns whether or not the predicate was satisfied
+    // 返回谓词是否满足
     fn pred(
         self,
         cs: ConstraintSystemRef<Fr>,
@@ -152,8 +156,7 @@ impl PredicateChecker<Fr, PersonalInfo, PersonalInfoVar, PassportComScheme, Pass
         Ok(())
     }
 
-    /// This outputs the field elements corresponding to the public inputs of this predicate.
-    /// This DOES NOT include `attrs`.
+    // 输出与谓词公共输入对应的字段元素。这不包括 `attrs`。
     fn public_inputs(&self) -> Vec<Fr> {
         [
             self.age_checker.public_inputs(),
@@ -163,6 +166,7 @@ impl PredicateChecker<Fr, PersonalInfo, PersonalInfoVar, PassportComScheme, Pass
     }
 }
 
+// 年龄多重展示有效期检查器
 #[derive(Clone, Default)]
 pub(crate) struct AgeMultishowExpiryChecker {
     pub(crate) age_checker: AgeChecker,
@@ -173,7 +177,7 @@ pub(crate) struct AgeMultishowExpiryChecker {
 impl PredicateChecker<Fr, PersonalInfo, PersonalInfoVar, PassportComScheme, PassportComSchemeG>
     for AgeMultishowExpiryChecker
 {
-    /// Returns whether or not the predicate was satisfied
+    // 返回谓词是否满足
     fn pred(
         self,
         cs: ConstraintSystemRef<Fr>,
@@ -186,8 +190,7 @@ impl PredicateChecker<Fr, PersonalInfo, PersonalInfoVar, PassportComScheme, Pass
         Ok(())
     }
 
-    /// This outputs the field elements corresponding to the public inputs of this predicate.
-    /// This DOES NOT include `attrs`.
+    // 输出与谓词公共输入对应的字段元素。这不包括 `attrs`。
     fn public_inputs(&self) -> Vec<Fr> {
         [
             self.age_checker.public_inputs(),
