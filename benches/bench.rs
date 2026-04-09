@@ -9,6 +9,7 @@ mod util;
 use credentials::employee_id::bench_employee_id;
 use credentials::passport::bench_passport;
 use credentials::student_id::bench_student_id;
+use credentials::composed::bench_cross_credential;
 use empty::bench_empty;
 use microbenches::microbenches;
 use util::new_size_file as setup; // Gotta set up logging proof sizes to CSV
@@ -18,6 +19,7 @@ criterion_group!(
     bench_passport,
     bench_student_id,
     bench_employee_id,
+    bench_cross_credential,
     /*
     bench_empty,
     com_scaling::bench_pred_proof_0::bench_pred_proof_0,

@@ -206,3 +206,26 @@ impl PredicateChecker<Fr, PersonalInfo, PersonalInfoVar, PassportComScheme, Pass
         .concat()
     }
 }
+
+// 持有者标签检查器
+#[derive(Clone)]
+pub(crate) struct HolderTagChecker {
+    pub(crate) holder_tag: Fr,
+}
+
+impl PredicateChecker<Fr, PersonalInfo, PersonalInfoVar, PassportComScheme, PassportComSchemeG>
+    for HolderTagChecker
+{
+    fn pred(
+        self,
+        cs: ConstraintSystemRef<Fr>,
+        attrs: &PersonalInfoVar,
+    ) -> Result<(), SynthesisError> {
+        let holder_tag = FpVar::<Fr>::new_input(ns!(cs, "holder tag"), || Ok(self.holder_tag))?;
+        attrs.seed.enforce_equal(&holder_tag)
+    }
+
+    fn public_inputs(&self) -> Vec<Fr> {
+        vec![self.holder_tag]
+    }
+}

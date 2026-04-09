@@ -41,3 +41,26 @@ impl PredicateChecker<Fr, EmployeeInfo, EmployeeInfoVar, EmployeeComScheme, Empl
     }
 }
 
+// 持有者标签检查器
+#[derive(Clone)]
+pub(crate) struct HolderTagChecker {
+    pub(crate) holder_tag: Fr,
+}
+
+impl PredicateChecker<Fr, EmployeeInfo, EmployeeInfoVar, EmployeeComScheme, EmployeeComSchemeG>
+    for HolderTagChecker
+{
+    fn pred(
+        self,
+        cs: ConstraintSystemRef<Fr>,
+        attrs: &EmployeeInfoVar,
+    ) -> Result<(), SynthesisError> {
+        let holder_tag = FpVar::<Fr>::new_input(ns!(cs, "holder tag"), || Ok(self.holder_tag))?;
+        attrs.seed.enforce_equal(&holder_tag)
+    }
+
+    fn public_inputs(&self) -> Vec<Fr> {
+        vec![self.holder_tag]
+    }
+}
+

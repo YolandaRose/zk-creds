@@ -13,7 +13,7 @@ use crate::credentials::student_id::params::{
     ForestVerifyingKey, PredProof, PredProvingKey, PredVerifyingKey, StudentComScheme,
     StudentComSchemeG, TreeProof, TreeProvingKey, TreeVerifyingKey, H, HG, MERKLE_CRH_PARAM,
 };
-use crate::credentials::student_id::preds::StudentCardExpiryChecker;
+use crate::credentials::student_id::preds::{HolderTagChecker, StudentCardExpiryChecker};
 use crate::credentials::student_id::student_dump::StudentDump;
 use crate::credentials::student_id::student_info::{StudentInfo, StudentInfoVar};
 
@@ -37,12 +37,15 @@ const TREE_HEIGHT: u32 = LOG2_NUM_LEAVES + 1 - LOG2_NUM_TREES;
 const NUM_TREES: usize = 2usize.pow(LOG2_NUM_TREES);
 
 const STUDENT_CARD_TODAY: u32 = 20220101;
+const HOLDER_TAG_RAW: u64 = 424242;
 
+// 加载学生卡数据
 fn load_dump() -> StudentDump {
     let file = File::open("benches/credentials/student_id/student_card.json").unwrap();
     serde_json::from_reader(file).unwrap()
 }
 
+// 随机生成树和森林
 fn rand_tree<R: Rng>(rng: &mut R) -> ComTree {
     let mut tree = ComTree::empty(MERKLE_CRH_PARAM.clone(), TREE_HEIGHT);
     let idx: u16 = rng.gen();
@@ -56,13 +59,16 @@ fn rand_forest<R: Rng>(rng: &mut R) -> ComForest {
     ComForest { trees }
 }
 
+// 发行方状态
 struct IssuerState {
     com_forest: ComForest,
     next_free_tree: usize,
     next_free_leaf: u64,
 }
 
+// 生成颁发凭证的CRS
 fn gen_issuance_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingKey) {
+    // 生成哈希检查器电路的CRS
     let pk = zkcreds::pred::gen_pred_crs::<
         _,
         _,
@@ -78,6 +84,7 @@ fn gen_issuance_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingKey) {
     (pk.clone(), pk.prepare_verifying_key())
 }
 
+// 生成有效期检查器的CRS
 fn gen_expiry_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingKey) {
     let pk = zkcreds::pred::gen_pred_crs::<
         _,
@@ -99,6 +106,29 @@ fn gen_expiry_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingKey) {
     (pk.clone(), pk.prepare_verifying_key())
 }
 
+// 生成持有者标签检查器的CRS
+fn gen_holdertag_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingKey) {
+    let pk = zkcreds::pred::gen_pred_crs::<
+        _,
+        _,
+        Bls12_381,
+        StudentInfo,
+        StudentInfoVar,
+        StudentComScheme,
+        StudentComSchemeG,
+        H,
+        HG,
+    >(
+        rng,
+        HolderTagChecker {
+            holder_tag: Fr::from(HOLDER_TAG_RAW),
+        },
+    )
+    .unwrap();
+    (pk.clone(), pk.prepare_verifying_key())
+}
+
+// 生成树的CRS
 fn gen_tree_crs<R: Rng>(rng: &mut R) -> (TreeProvingKey, TreeVerifyingKey) {
     let pk = zkcreds::com_tree::gen_tree_memb_crs::<
         _,
@@ -113,6 +143,7 @@ fn gen_tree_crs<R: Rng>(rng: &mut R) -> (TreeProvingKey, TreeVerifyingKey) {
     (pk.clone(), pk.prepare_verifying_key())
 }
 
+// 生成森林的CRS
 fn gen_forest_crs<R: Rng>(rng: &mut R) -> (ForestProvingKey, ForestVerifyingKey) {
     let pk = zkcreds::com_forest::gen_forest_memb_crs::<
         _,
@@ -127,6 +158,7 @@ fn gen_forest_crs<R: Rng>(rng: &mut R) -> (ForestProvingKey, ForestVerifyingKey)
     (pk.clone(), pk.prepare_verifying_key())
 }
 
+// 初始化发行方状态
 fn init_issuer<R: Rng>(rng: &mut R) -> IssuerState {
     let com_forest = rand_forest(rng);
     let next_free_tree = rng.gen_range(0..NUM_TREES);
@@ -138,13 +170,15 @@ fn init_issuer<R: Rng>(rng: &mut R) -> IssuerState {
     }
 }
 
+// 用户请求颁发凭证
 fn user_req_issuance<R: Rng>(
     rng: &mut R,
     c: &mut Criterion,
     issuance_pk: &PredProvingKey,
 ) -> (StudentInfo, StudentIssuanceReq) {
     let dump = load_dump();
-    let (my_info, _) = dump.to_student_info(rng);
+    let (mut my_info, _) = dump.to_student_info(rng);
+    my_info.seed = Fr::from(HOLDER_TAG_RAW);
     let attrs_com = my_info.commit();
     let hash_checker = StudentRecordHashChecker::from_holder(&my_info);
 
@@ -166,6 +200,7 @@ fn user_req_issuance<R: Rng>(
     (my_info, req)
 }
 
+// 发行方接收凭证请求并验证
 fn issue(
     c: &mut Criterion,
     state: &mut IssuerState,
@@ -183,12 +218,21 @@ fn issue(
     state.com_forest.trees[state.next_free_tree].insert(state.next_free_leaf, &req.attrs_com)
 }
 
+// 获取有效期检查器
 fn get_expiry_checker() -> StudentCardExpiryChecker {
     StudentCardExpiryChecker {
         threshold_expiry: Fr::from(STUDENT_CARD_TODAY),
     }
 }
 
+// 获取持有者标签检查器
+fn get_holdertag_checker() -> HolderTagChecker {
+    HolderTagChecker {
+        holder_tag: Fr::from(HOLDER_TAG_RAW),
+    }
+}
+
+// 用户证明树成员资格
 fn user_prove_tree_memb<R: Rng>(
     rng: &mut R,
     c: &mut Criterion,
@@ -208,6 +252,7 @@ fn user_prove_tree_memb<R: Rng>(
         .unwrap()
 }
 
+// 用户证明森林成员资格
 fn user_prove_forest_memb<R: Rng>(
     rng: &mut R,
     c: &mut Criterion,
@@ -228,6 +273,7 @@ fn user_prove_forest_memb<R: Rng>(
         .unwrap()
 }
 
+// 用户证明谓词
 fn user_prove_pred<R, P>(
     rng: &mut R,
     c: &mut Criterion,
@@ -259,6 +305,7 @@ where
     proof
 }
 
+// 用户链接凭证
 fn user_link<R: Rng + CryptoRng>(
     rng: &mut R,
     c: &mut Criterion,
@@ -300,11 +347,13 @@ fn user_link<R: Rng + CryptoRng>(
     });
 }
 
+// 学生证验证基准测试
 pub fn bench_student_id(c: &mut Criterion) {
     let mut rng = ark_std::test_rng();
 
     let (issuance_pk, issuance_vk) = gen_issuance_crs(&mut rng);
     let (expiry_pk, expiry_vk) = gen_expiry_crs(&mut rng);
+    let (holdertag_pk, holdertag_vk) = gen_holdertag_crs(&mut rng);
     let (tree_pk, tree_vk) = gen_tree_crs(&mut rng);
     let (forest_pk, forest_vk) = gen_forest_crs(&mut rng);
 
@@ -321,6 +370,15 @@ pub fn bench_student_id(c: &mut Criterion) {
         "Student ID: proving card expiry",
         &expiry_pk,
         &get_expiry_checker(),
+        &student_info,
+        &auth_path,
+    );
+    let holdertag_proof = user_prove_pred(
+        &mut rng,
+        c,
+        "Student ID: proving holder tag",
+        &holdertag_pk,
+        &get_holdertag_checker(),
         &student_info,
         &auth_path,
     );
@@ -349,6 +407,7 @@ pub fn bench_student_id(c: &mut Criterion) {
 
     let mut pred_inputs = PredPublicInputs::default();
     pred_inputs.prepare_pred_checker(&expiry_vk, &get_expiry_checker());
+    pred_inputs.prepare_pred_checker(&holdertag_vk, &get_holdertag_checker());
     user_link(
         &mut rng,
         c,
@@ -358,11 +417,11 @@ pub fn bench_student_id(c: &mut Criterion) {
         &forest_vk,
         &roots,
         pred_inputs,
-        vec![expiry_vk],
+        vec![expiry_vk, holdertag_vk],
         cred,
         &auth_path,
         &tree_proof,
         &forest_proof,
-        vec![expiry_proof],
+        vec![expiry_proof, holdertag_proof],
     );
 }

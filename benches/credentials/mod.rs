@@ -4,6 +4,7 @@
 //! holder across credentials; prove equality in a link predicate and/or enforce at issuance.
 
 pub mod common;
+pub mod composed;
 pub mod employee_id;
 pub mod passport;
 pub mod student_id;

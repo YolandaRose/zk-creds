@@ -40,3 +40,26 @@ impl PredicateChecker<Fr, StudentInfo, StudentInfoVar, StudentComScheme, Student
         vec![self.threshold_expiry]
     }
 }
+
+// 持有者标签检查器
+#[derive(Clone)]
+pub(crate) struct HolderTagChecker {
+    pub(crate) holder_tag: Fr,
+}
+
+impl PredicateChecker<Fr, StudentInfo, StudentInfoVar, StudentComScheme, StudentComSchemeG>
+    for HolderTagChecker
+{
+    fn pred(
+        self,
+        cs: ConstraintSystemRef<Fr>,
+        attrs: &StudentInfoVar,
+    ) -> Result<(), SynthesisError> {
+        let holder_tag = FpVar::<Fr>::new_input(ns!(cs, "holder tag"), || Ok(self.holder_tag))?;
+        attrs.seed.enforce_equal(&holder_tag)
+    }
+
+    fn public_inputs(&self) -> Vec<Fr> {
+        vec![self.holder_tag]
+    }
+}
