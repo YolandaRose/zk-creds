@@ -1,4 +1,4 @@
-//! Defines a Merkle tree which holds credentials (formally "commitments to attribute sets")
+// 定义了一个默克尔树，用于保存凭证（正式名称为“属性集的承诺”）
 
 use crate::{
     attrs::Attrs,
@@ -33,8 +33,7 @@ use linkg16::groth16;
 #[cfg(test)]
 use crate::proof_data_structures::TreeVerifyingKey;
 
-/// A sparse Merkle tree config which uses the identity function for leaf hashes (we don't need to
-/// hash commitments)
+// 一个稀疏默克尔树配置，使用身份函数作为叶子哈希（我们不需要对承诺进行哈希）
 pub struct ComTreeConfig<H: TwoToOneCRH>(H);
 
 impl<H: TwoToOneCRH> TreeConfig for ComTreeConfig<H> {
@@ -42,7 +41,7 @@ impl<H: TwoToOneCRH> TreeConfig for ComTreeConfig<H> {
     type TwoToOneHash = H;
 }
 
-/// An auth path in a `ComTree`
+// `ComTree`中的授权路径
 pub struct ComTreePath<ConstraintF, H, AC>
 where
     ConstraintF: PrimeField,
@@ -51,7 +50,7 @@ where
     AC: CommitmentScheme,
     AC::Output: ToConstraintField<ConstraintF>,
 {
-    /// The path
+    // 路径
     pub path: SparseMerkleTreePath<ComTreeConfig<H>>,
 
     _marker: PhantomData<(ConstraintF, AC)>,
@@ -81,7 +80,7 @@ where
     AC: CommitmentScheme,
     AC::Output: ToConstraintField<ConstraintF>,
 {
-    /// The root of the tree that this auth path belongs to
+    // 此授权路径所属的树的根
     pub fn root(&self) -> H::Output {
         self.path.root.clone()
     }
@@ -104,7 +103,7 @@ where
     }
 }
 
-/// A Merkle tree of attribute commitments
+// 一个属性承诺的默克尔树
 pub struct ComTree<ConstraintF, H, AC>
 where
     ConstraintF: PrimeField,
@@ -113,13 +112,13 @@ where
     AC: CommitmentScheme,
     AC::Output: ToConstraintField<ConstraintF>,
 {
-    /// The tree's contents
+    // 树的内容
     tree: SparseMerkleTree<ComTreeConfig<H>>,
 
     _marker: PhantomData<(ConstraintF, AC)>,
 }
 
-/// A version of a ComTree that can be serialized and deserialized
+// 一个可以序列化和反序列化的ComTree版本
 #[derive(CanonicalSerialize, CanonicalDeserialize)]
 pub struct ComTreeWireFormat<ConstraintF, H, AC>
 where
@@ -129,7 +128,7 @@ where
     AC: CommitmentScheme,
     AC::Output: ToConstraintField<ConstraintF>,
 {
-    /// The tree's contents
+    // 树的内容
     tree: SparseMerkleTreeWireFormat<ComTreeConfig<H>>,
 
     _marker: PhantomData<(ConstraintF, AC)>,
@@ -147,7 +146,7 @@ where
         self,
         two_to_one_param: TwoToOneParam<ComTreeConfig<H>>,
     ) -> ComTree<ConstraintF, H, AC> {
-        // Remember the ComTree doesn't hash its leaves
+        // 记住Com树不哈希其叶子
         let leaf_param = <IdentityCRH as CRH>::Parameters::default();
         ComTree {
             tree: self
@@ -166,12 +165,12 @@ where
     AC: CommitmentScheme,
     AC::Output: ToConstraintField<ConstraintF>,
 {
-    /// Returns this tree's root
+    // 返回此树的根
     pub fn root(&self) -> H::Output {
         self.tree.root()
     }
 
-    /// Makes an empty list with capacity `2^tree_height`. Height MUST be at least 2.
+    // 制作一个容量为`2^tree_height`的空列表。高度必须至少为2。
     pub fn empty(crh_params: H::Parameters, tree_height: u32) -> ComTree<ConstraintF, H, AC> {
         ComTree {
             tree: SparseMerkleTree::empty::<AC::Output>((), crh_params, tree_height),
@@ -179,12 +178,12 @@ where
         }
     }
 
-    /// Makes a list of capacity `2^tree_height` that's populated with all the given commitments
-    /// at the given indices. Height MUST be at least 2.
+    // 制作一个容量为`2^tree_height`的列表，其中填充了所有给定的承诺
+    // 在给定的索引处。高度必须至少为2。
     ///
-    /// Panics
-    /// =====
-    /// Panics if any key in `coms` is greater than or equal to `2^tree_height`
+    // 抛出
+    // =====
+    // 如果`coms`中的任何键大于或等于`2^tree_height`，则抛出
     pub fn new(
         crh_params: H::Parameters,
         tree_height: u32,
@@ -199,15 +198,15 @@ where
         }
     }
 
-    /// Inserts a commitment at index `idx`. This will overwrite the existing entry if there is one.
+    // 在索引`idx`处插入一个承诺。如果存在，则覆盖现有条目。
     ///
-    /// Panics
-    /// =====
-    /// Panics when `idx >= 2^log_capacity`
+    // 抛出
+    // =====
+    // 当`idx >= 2^log_capacity`时抛出
     pub fn insert(&mut self, idx: u64, com: &AC::Output) -> ComTreePath<ConstraintF, H, AC> {
-        // Do the insertion
+        // 执行插入
         self.tree.insert(idx, com).expect("could not insert item");
-        // Return the auth path
+        // 返回授权路径
         let path = self.tree.generate_proof(idx, com).unwrap();
         ComTreePath {
             path,
@@ -215,16 +214,16 @@ where
         }
     }
 
-    /// Removes the entry at index `idx`, if one exists
+    // 删除索引`idx`处的条目，如果存在
     ///
-    /// Panics
-    /// =====
-    /// Panics when `idx >= 2^tree_height`
+    // 抛出
+    // =====
+    // 当`idx >= 2^tree_height`时抛出
     pub fn remove(&mut self, idx: u64) {
         self.tree.remove(idx).expect("could not remove item");
     }
 
-    /// Converts this `ComTree` into a format that can be serialized and deserialized
+    // 将此`ComTree`转换为可以序列化和反序列化的格式
     pub fn into_wire_format(&self) -> ComTreeWireFormat<ConstraintF, H, AC> {
         ComTreeWireFormat {
             tree: self.tree.into_wire_format(),
@@ -241,7 +240,7 @@ where
     AC: CommitmentScheme,
     AC::Output: ToConstraintField<ConstraintF>,
 {
-    /// Proves that the given attribute commitment is at the specified tree index
+    // 证明给定的属性承诺在指定的树索引处
     pub fn prove_membership<R, E, A, ACG, HG>(
         &self,
         rng: &mut R,
@@ -258,7 +257,7 @@ where
     {
         let root = self.path.root.clone();
 
-        // Construct the prover with all the relevant info, and prove
+        // 构造证明者，并证明
         let prover: TreeMembershipProver<E::Fr, AC, ACG, H, HG> = TreeMembershipProver {
             height: self.path.height(),
             crh_param: two_to_one_params.clone(),
@@ -276,7 +275,7 @@ where
     }
 }
 
-/// Generates the membership proving key for this tree
+// 生成此树的成员资格证明密钥
 pub fn gen_tree_memb_crs<R, E, A, AC, ACG, H, HG>(
     rng: &mut R,
     crh_param: H::Parameters,
@@ -334,8 +333,7 @@ where
     groth16::verify_proof(&vk.vk, &proof.proof, &all_inputs)
 }
 
-/// A circuit that proves that a commitment to `attrs` appears in the Merkle tree of height `height`
-/// defined by root hash `root`.
+// 一个电路，证明一个承诺到`attrs`出现在高度为`height`的默克尔树中，由根哈希`root`定义。
 pub struct TreeMembershipProver<ConstraintF, AC, ACG, H, HG>
 where
     ConstraintF: PrimeField,
@@ -346,34 +344,38 @@ where
     H::Output: ToConstraintField<ConstraintF>,
     HG: TwoToOneCRHGadget<H, ConstraintF>,
 {
-    // Constants //
+    // 常量 //
     pub height: u32,
     pub crh_param: TwoToOneParam<ComTreeConfig<H>>,
 
-    // Private inputs //
-    /// The leaf value
+    // 私有输入 //
+    // 叶子值
     pub attrs_com: AC::Output,
-    /// The tree root's value
+    // 树根的值
     pub root: H::Output,
-    /// Merkle auth path of the leaf `attrs_com`
+    // 叶子`attrs_com`的默克尔授权路径
     pub auth_path: Option<SparseMerkleTreePath<ComTreeConfig<H>>>,
 
-    // Marker //
+    // 标记 //
     pub _marker: PhantomData<(ConstraintF, AC, ACG, H, HG, HG)>,
 }
 
+// 默认授权路径
 pub fn default_auth_path<AC, H>(height: u32) -> SparseMerkleTreePath<ComTreeConfig<H>>
 where
     AC: CommitmentScheme,
     H: TwoToOneCRH,
 {
+    // 默认承诺字节
     let default_com_bytes = to_bytes!(AC::Output::default()).unwrap();
     SparseMerkleTreePath::<ComTreeConfig<H>> {
         leaf_hashes: (default_com_bytes.clone(), default_com_bytes),
+        // 内部哈希
         inner_hashes: vec![
             (H::Output::default(), H::Output::default());
             height.checked_sub(2).expect("tree height cannot be < 2") as usize
         ],
+        // 根
         root: H::Output::default(),
     }
 }
@@ -423,25 +425,24 @@ where
         self,
         cs: ConstraintSystemRef<ConstraintF>,
     ) -> Result<(), SynthesisError> {
-        // Witness the public variables. In ALL zkcreds proofs, it's the commitment to the
-        // attributes and the merkle root
+        // 见证公共变量。在所有的zkcreds证明中，它是属性集的承诺和默克尔根
         let attrs_com_var =
             ACG::OutputVar::new_input(ns!(cs, "attrs com var"), || Ok(self.attrs_com.clone()))?;
         let root_var = HG::OutputVar::new_input(ns!(cs, "root var"), || Ok(self.root.clone()))?;
 
-        // Now we do the tree membership proof. Input the two-to-one params
+        // 现在我们进行树成员资格证明。输入两到一参数
         let crh_param_var =
             HG::ParametersVar::new_constant(ns!(cs, "two_to_one param"), &self.crh_param)?;
-        // This is a placeholder value. We don't actually use leaf hashes
+        // 这是一个占位符值。我们实际上不使用叶子哈希
         let leaf_param_var = UnitVar::default();
 
-        // If there is no auth path, make one of the appropriate length
+        // 如果没有授权路径，制作一个适当长度的路径
         let auth_path = self
             .auth_path
             .clone()
             .unwrap_or_else(|| default_auth_path::<AC, H>(self.height));
 
-        // Witness the auth path
+        // 见证授权路径
         let path_var = SparseMerkleTreePathVar::<_, IdentityCRHGadget, HG, _>::new_witness(
             ns!(cs, "auth path"),
             || Ok(auth_path),
@@ -471,18 +472,17 @@ mod test {
 
     use ark_bls12_381::Bls12_381 as E;
 
-    // Tests correctness of tree membership proofs, using Pedersen hashing for the tree and
-    // commitments
+    // 测试树成员资格证明的正确性，使用Pedersen哈希进行树和承诺
     #[test]
     fn test_com_tree_proof_pedersen() {
         let mut rng = ark_std::test_rng();
         let tree_height = 32;
 
-        // Make a attribute to put in the tree
+        // 制作一个属性放入树中
         let person = NameAndBirthYear::new(&mut rng, b"Andrew", 1992);
         let person_com = Attrs::<_, TestComSchemePedersen>::commit(&person);
 
-        // Generate the predicate circuit's CRS
+        // 生成谓词电路的CRS
         let pk = gen_tree_memb_crs::<
             _,
             E,
@@ -494,7 +494,7 @@ mod test {
         >(&mut rng, MERKLE_CRH_PARAM.clone(), tree_height)
         .unwrap();
 
-        // Make a tree and "issue", i.e., put the person commitment in the tree at index 17
+        // 制作一个树并“发行”，即在树的索引17处放入人的承诺
         let leaf_idx = 17;
         let mut tree = ComTree::<_, TestTreeH, TestComSchemePedersen>::empty(
             MERKLE_CRH_PARAM.clone(),
@@ -502,7 +502,7 @@ mod test {
         );
         let auth_path = tree.insert(leaf_idx, &person_com);
 
-        // The person can now prove membership in the tree
+        // 现在人可以证明其在树中的成员资格
         let proof = auth_path
             .prove_membership(&mut rng, &pk, &*MERKLE_CRH_PARAM, person_com)
             .unwrap();
@@ -511,18 +511,17 @@ mod test {
         assert!(verify_tree_memb(&vk, &proof, &person_com, &tree.root()).unwrap());
     }
 
-    // Tests correctness of tree membership proofs, using Poseidon hashing for the tree and
-    // commitments
+    // 测试树成员资格证明的正确性，使用Poseidon哈希进行树和承诺
     #[test]
     fn test_com_tree_proof_poseidon() {
         let mut rng = ark_std::test_rng();
         let tree_height = 32;
 
-        // Make a attribute to put in the tree
+        // 制作一个属性放入树中
         let person = NameAndBirthYear::new(&mut rng, b"Andrew", 1992);
         let person_com = Attrs::<_, Bls12PoseidonCommitter>::commit(&person);
 
-        // Generate the predicate circuit's CRS
+        // 生成谓词电路的CRS
         let pk = gen_tree_memb_crs::<
             _,
             E,
@@ -534,13 +533,13 @@ mod test {
         >(&mut rng, (), tree_height)
         .unwrap();
 
-        // Make a tree and "issue", i.e., put the person commitment in the tree at index 17
+        // 制作一个树并“发行”，即在树的索引17处放入人的承诺
         let leaf_idx = 17;
         let mut tree =
             ComTree::<_, Bls12PoseidonCrh, Bls12PoseidonCommitter>::empty((), tree_height);
         let auth_path = tree.insert(leaf_idx, &person_com);
 
-        // The person can now prove membership in the tree
+        // 现在人可以证明其在树中的成员资格
         let proof = auth_path
             .prove_membership(&mut rng, &pk, &(), person_com)
             .unwrap();

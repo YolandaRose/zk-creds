@@ -17,44 +17,23 @@ use ark_std::{
 };
 use lazy_static::lazy_static;
 
-// 护照信息是电子机器可读旅行证件（eMRTD；又名“护照”）的逻辑数据结构1 （LDS1）的基本文件（EF）的数据组1 （DG1）。使用的格式是TD3（与TD1或TD2相对）。
+// 扁平 JSON + 固定布局 RECORD_BLOB（与 `PassportDump::write_blob` / `PersonalInfo::record_blob` 一致）
 pub(crate) const NAME_LEN: usize = 39;
-pub(crate) const DATE_LEN: usize = 6;
 pub(crate) const STATE_ID_LEN: usize = 3;
-pub(crate) const DOCUMENT_NUMBER_LEN: usize = 9;
-pub(crate) const DG1_LEN: usize = 93;
-pub(crate) const ISSUER_OFFSET: usize = 7;
-pub(crate) const NAME_OFFSET: usize = ISSUER_OFFSET + STATE_ID_LEN;
-pub(crate) const DOCUMENT_NUMBER_OFFSET: usize = NAME_OFFSET + NAME_LEN;
-pub(crate) const NATIONALITY_OFFSET: usize = DOCUMENT_NUMBER_OFFSET + DOCUMENT_NUMBER_LEN + 1;
-pub(crate) const DOB_OFFSET: usize = NATIONALITY_OFFSET + STATE_ID_LEN;
-pub(crate) const EXPIRY_OFFSET: usize = DOB_OFFSET + DATE_LEN + 2;
-
-// 以下值特定于美国护照
-
-// 美国护照使用SHA-256进行内部散列计算，并且还使用SHA-256进行最终签名（RSA-PKCS1v1.5-SHA256）
 pub(crate) const HASH_LEN: usize = 32;
-pub(crate) const SIG_HASH_LEN: usize = 32;
+/// 生物特征原始字节在记录中的最大长度（不足补 0；与电路见证一致）
+pub(crate) const BIOMETRIC_RAW_MAX: usize = 128;
 
-// 计算护照签名时计算的中间值
-pub(crate) const PRE_ECONTENT_LEN: usize = 180;
-pub(crate) const ECONTENT_LEN: usize = 104;
-// DG1散列在pre-econtent中的位置
-pub(crate) const DG1_HASH_OFFSET: usize = 31;
-// DG2散列在pre-econtent中的位置
-pub(crate) const DG2_HASH_OFFSET: usize = 70;
-// pre-econtent散列在econtent中的位置
-pub(crate) const PRE_ECONTENT_HASH_OFFSET: usize = 72;
+// nationality | name | dob (be u32 YYYYMMDD) | passport_expiry (be u32 YYYYMMDD) | biometrics raw (padded)
+pub(crate) const RECORD_BLOB_LEN: usize =
+    STATE_ID_LEN + NAME_LEN + 4 + 4 + BIOMETRIC_RAW_MAX;
 
-// 选择一个配对引擎和一个定义在E::Fr上的曲线
 pub(crate) type E = Bls12_381;
 pub(crate) type Fr = <E as PairingEngine>::Fr;
 
-// 选择一个两个到一的CRH
 pub(crate) type H = zkcreds::poseidon_utils::Bls12PoseidonCrh;
 pub(crate) type HG = zkcreds::poseidon_utils::Bls12PoseidonCrh;
 
-// 选择一个承诺方案
 pub(crate) type PassportComScheme = zkcreds::poseidon_utils::Bls12PoseidonCommitter;
 pub(crate) type PassportComSchemeG = zkcreds::poseidon_utils::Bls12PoseidonCommitter;
 
@@ -63,7 +42,6 @@ pub(crate) type ComForest = zkcreds::com_forest::ComForest<Fr, H, PassportComSch
 pub(crate) type ComTreePath = zkcreds::com_tree::ComTreePath<Fr, H, PassportComScheme>;
 pub(crate) type ComForestRoots = zkcreds::com_forest::ComForestRoots<Fr, H>;
 
-// Groth16类型的别名
 pub(crate) type PredProvingKey = ZkcredsPredPk<
     Bls12_381,
     PersonalInfo,
@@ -104,7 +82,6 @@ pub(crate) type TreeProof =
 pub(crate) type ForestProof =
     ZkcredsForestProof<Bls12_381, PersonalInfo, PassportComScheme, PassportComSchemeG, H, HG>;
 
-// 设置参数
 lazy_static! {
     pub(crate) static ref PASSPORT_COM_PARAM: <PassportComScheme as CommitmentScheme>::Parameters = {
         let mut rng = {

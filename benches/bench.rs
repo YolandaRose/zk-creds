@@ -1,4 +1,4 @@
-﻿use criterion::{criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main};
 
 mod com_scaling;
 mod credentials;
@@ -12,7 +12,7 @@ use credentials::student_id::bench_student_id;
 use credentials::composed::bench_cross_credential;
 use empty::bench_empty;
 use microbenches::microbenches;
-use util::new_size_file as setup; // Gotta set up logging proof sizes to CSV
+use util::new_size_file as setup; // 需要设置日志证明大小到CSV
 
 criterion_group!(
     benches,

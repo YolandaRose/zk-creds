@@ -1,9 +1,7 @@
 ﻿use criterion::Criterion;
 
-/// Runs passport + student + employee flows with the same holder_tag policy.
-///
-/// This is a multi-proof composition benchmark entrypoint (MVP): each credential proves
-/// membership + attributes + holder_tag, and the verifier accepts all three bundles together.
+//使用相同的holder_tag策略创建护照+学生+员工流。
+// 这是一个多重证明的组合基准入口点（MVP）：每个凭证证明成员资格+属性+ holder_tag，验证器同时接受这三个捆绑包。
 pub fn bench_cross_credential(c: &mut Criterion) {
     crate::credentials::passport::bench_passport(c);
     crate::credentials::student_id::bench_student_id(c);

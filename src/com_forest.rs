@@ -1,5 +1,4 @@
-//! Defines structures for holding Merkle forests, i.e., a set of Merkle trees. This is used in
-//! credential issuance.
+// 定义用于保存默克尔森林的结构，即一组默克尔树。这在凭证发行中使用。
 
 use crate::{
     attrs::Attrs,
@@ -26,7 +25,7 @@ use linkg16::groth16;
 #[derive(Clone, Copy)]
 pub struct PreparedRoots<E: PairingEngine>(pub(crate) E::G1Projective);
 
-/// Roots of a `ComForest`
+// `ComForest`的根
 pub struct ComForestRoots<ConstraintF, H>
 where
     ConstraintF: PrimeField,
@@ -110,7 +109,7 @@ where
             .collect()
     }
 
-    /// Proves that the given attribute commitment is at the specified tree index
+    // 证明给定的属性承诺处于指定的树索引位置
     pub fn prove_membership<R, E, A, AC, ACG, HG>(
         &self,
         rng: &mut R,
@@ -142,7 +141,7 @@ where
     }
 }
 
-/// A forest of commitment trees
+// 一组承诺树的森林
 pub struct ComForest<ConstraintF, H, AC>
 where
     ConstraintF: PrimeField,
@@ -171,7 +170,7 @@ where
     }
 }
 
-/// Proves that the given attribute commitment is at the specified tree index
+// 证明给定的属性承诺处于指定的树索引位置
 pub fn gen_forest_memb_crs<R, E, A, AC, ACG, H, HG>(
     rng: &mut R,
     num_trees: usize,
@@ -214,16 +213,16 @@ where
     H::Output: ToConstraintField<ConstraintF>,
     HG: TwoToOneCRHGadget<H, ConstraintF>,
 {
-    // Public inputs
+    // 公共输入
     pub roots: Vec<H::Output>,
 
-    // Private inputs //
-    // This is necessary for all proofs
+    // 私有输入 //
+    // 这对于所有证明都是必要的
     pub attrs_com: AC::Output,
-    // The root that's the member of the forest
+    // 森林中的成员根
     pub member_root: H::Output,
 
-    // Marker //
+    // 标记 //
     pub _marker: PhantomData<(ConstraintF, AC, ACG, H, HG, HG)>,
 }
 
@@ -242,7 +241,7 @@ where
         member_root: &HG::OutputVar,
         all_roots: &[HG::OutputVar],
     ) -> Result<(), SynthesisError> {
-        // Assert that member_root equals one of the roots
+        // 断言member_root等于其中一个根
         let mut is_member = Boolean::FALSE;
         for root in all_roots {
             is_member = is_member.or(&member_root.is_eq(root)?)?;
@@ -267,14 +266,13 @@ where
         self,
         cs: ConstraintSystemRef<ConstraintF>,
     ) -> Result<(), SynthesisError> {
-        // Witness the public variables. In ALL zkcreds proofs, it's the commitment to the
-        // attributes and the merkle root
+        // 见证公共变量。在所有的zkcreds证明中，它是属性集的承诺和默克尔根
         let _attrs_com =
             ACG::OutputVar::new_input(ns!(cs, "attrs com"), || Ok(self.attrs_com.clone()))?;
         let member_root =
             HG::OutputVar::new_input(ns!(cs, "root"), || Ok(self.member_root.clone()))?;
 
-        // Witness the roots
+        // 见证根
         let all_roots =
             Vec::<HG::OutputVar>::new_input(ns!(cs, "roots"), || Ok(self.roots.clone()))?;
 
@@ -303,17 +301,17 @@ pub(crate) mod test {
         tree
     }
 
-    /// Tests a predicate that returns true iff the given `NameAndBirthYear` is at least 21
+    // 测试一个谓词，如果给定的`NameAndBirthYear`至少为21，则返回true
     #[test]
     fn test_com_forest_proof() {
         let mut rng = ark_std::test_rng();
         let num_trees = 10;
 
-        // Make a random commitment. This value doens't matter
+        // 制作一个随机承诺。这个值不重要
         let attrs_com =
             <<TestComSchemePedersen as CommitmentScheme>::Output as UniformRand>::rand(&mut rng);
 
-        // Generate the predicate circuit's CRS
+        // 生成谓词电路的CRS
         let pk = gen_forest_memb_crs::<
             _,
             E,
@@ -325,26 +323,26 @@ pub(crate) mod test {
         >(&mut rng, num_trees)
         .unwrap();
 
-        // Make a bunch of trees with random elements inerted in them
+        // 制作一堆带有随机元素插入的树
         let trees: Vec<_> = core::iter::repeat_with(|| random_tree(&mut rng))
             .take(num_trees)
             .collect();
         let forest = ComForest { trees };
 
-        // Start the memberhsip proof. Pick an arbitrary root
+        // 开始成员资格证明。选择一个任意根
         let member_root = {
             let idx = rng.gen_range(0..num_trees);
             forest.trees[idx].root()
         };
-        // Collect the roots. We don't need the whole forest in order to compute a proof
+        // 收集根。我们不需要整个森林来计算证明
         let roots = forest.roots();
 
-        // Prove that the chosen root appears in the forest
+        // 证明选定的根出现在森林中
         let proof = roots
             .prove_membership(&mut rng, &pk, member_root, attrs_com)
             .unwrap();
 
-        // Verify
+        // 验证
 
         let vk = pk.prepare_verifying_key();
         assert!(roots

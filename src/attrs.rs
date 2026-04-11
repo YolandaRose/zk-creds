@@ -1,5 +1,4 @@
-//! Defines traits that describe _attributes_, i.e., the data that credentials are intended to
-//! commit to and hide.
+// 定义描述属性的特征，即凭证打算提交和隐藏的数据。
 
 use crate::poseidon_utils::ComNonce;
 
@@ -14,45 +13,39 @@ use ark_std::UniformRand;
 use rand::SeedableRng;
 use rand_chacha::ChaCha12Rng;
 
-/// This describes any object which holds attributes. The requirement is that it holds a commitment
-/// nonce and defines a way to commit to itself.
+// 描述任何持有属性的对象。要求是它持有承诺随机数并定义一种方法来提交到自身。
 pub trait Attrs<ConstraintF, AC>: Default
 where
     ConstraintF: PrimeField,
     AC: CommitmentScheme,
     AC::Output: ToConstraintField<ConstraintF>,
 {
-    /// Serializes EVERYTHING BUT the nonce and param
+    // 序列化除了nonce和param之外的所有内容
     fn to_bytes(&self) -> Vec<u8>;
 
-    /// Gets the parameters for the commitment scheme. In general, attributes shouldn't be holding
-    /// the parameters. Rather, this function should return a reference to some global value
-    /// somewhere.
+    // 获取承诺方案的参数。一般来说，属性不应该持有参数。相反，这个函数应该返回对某个全局值的引用。
     fn get_com_param(&self) -> &AC::Parameters;
 
-    /// Gets the commitment nonce
+    // 获取承诺随机数
     fn get_com_nonce(&self) -> &ComNonce;
 
-    // Uses the nonce and commitment parameters to deterministically form a commitment to this
-    // attribute set
+    // 使用nonce和承诺参数确定性地形成对属性集的承诺
     fn commit(&self) -> AC::Output {
         let param = self.get_com_param();
 
-        // Generate a nonce of the appropriate type using the given nonce as a seed
+        // 使用给定的nonce作为种子生成适当类型的nonce
         let nonce = {
             let nonce_seed = self.get_com_nonce();
             let mut rng = ChaCha12Rng::from_seed(nonce_seed.0);
             AC::Randomness::rand(&mut rng)
         };
 
-        // Commit to the serialized attributes
+        // 提交序列化的属性
         AC::commit(param, &self.to_bytes(), &nonce).unwrap()
     }
 }
 
-/// This describes the ZK-circuit version of `Attrs`. The only requirement is that it holds a
-/// commitment nonce, defines a way to commit to itself, and can be constructed from its
-/// corresponding `Attrs` object.
+// 描述ZK电路版本的`Attrs`。唯一的要求是它持有承诺随机数，定义一种方法来提交到自身，并且可以从其对应的`Attrs`对象构造。
 pub trait AttrsVar<ConstraintF, A, AC, ACG>: ToBytesGadget<ConstraintF> + Sized
 where
     ConstraintF: PrimeField,
@@ -61,31 +54,27 @@ where
     AC::Output: ToConstraintField<ConstraintF>,
     ACG: CommitmentGadget<AC, ConstraintF>,
 {
-    /// Returns the constraint system used by this var
+    // 返回此var使用的约束系统
     fn cs(&self) -> ConstraintSystemRef<ConstraintF>;
 
-    /// Witnesses the secret attrributes for ZK usage
+    // 见证ZK使用的秘密属性
     fn witness_attrs(
         cs: impl Into<Namespace<ConstraintF>>,
         attrs: &A,
     ) -> Result<Self, SynthesisError>;
 
-    /// Gets the parameters for the commitment scheme. In general, attributes shouldn't be holding
-    /// the parameters. Rather, this function should return a reference to some global value
-    /// somewhere.
+    // 获取承诺方案的参数。一般来说，属性不应该持有参数。相反，这个函数应该返回对某个全局值的引用。
     fn get_com_param(&self) -> Result<ACG::ParametersVar, SynthesisError>;
 
-    /// Gets the commitment nonce. Not a variable, but a native nonce. This is witnessed
-    /// automatically.
+    // 获取承诺随机数。不是变量，而是原生随机数。这是自动见证的。
     fn get_com_nonce(&self) -> &ComNonce;
 
-    // Uses the nonce and commitment parameters to deterministically form a commitment to this
-    // attribute set
+    // 使用nonce和承诺参数确定性地形成对属性集的承诺
     fn commit(&self) -> Result<ACG::OutputVar, SynthesisError> {
         let cs = self.cs();
         let com_param = self.get_com_param()?;
 
-        // Generate a nonce of the appropriate type using the given nonce as a seed
+        // 使用给定的nonce作为种子生成适当类型的nonce
         let nonce_var = {
             let nonce_seed = self.get_com_nonce();
             let mut rng = ChaCha12Rng::from_seed(nonce_seed.0);
@@ -93,13 +82,12 @@ where
             ACG::RandomnessVar::new_witness(ns!(cs, "nonce_var"), || Ok(nonce))?
         };
 
-        // Commit to the serialized attributes
+        // 提交序列化的属性
         ACG::commit(&com_param, &self.to_bytes()?, &nonce_var)
     }
 }
 
-/// An `Attrs` trait that has something that identifies the user as well as  a random seed we can
-/// use for rate limiting
+// 一个`Attrs`特征，它有一个标识用户的东西以及一个我们可以用于速率限制的随机种子
 pub trait AccountableAttrs<ConstraintF, AC>: Attrs<ConstraintF, AC>
 where
     ConstraintF: PrimeField,
@@ -113,7 +101,7 @@ where
     fn get_seed(&self) -> Self::Seed;
 }
 
-/// The gadget version of `AccountableAttrs`
+// `AccountableAttrs`的gadget版本
 pub trait AccountableAttrsVar<ConstraintF, A, AC, ACG>: AttrsVar<ConstraintF, A, AC, ACG>
 where
     ConstraintF: PrimeField,

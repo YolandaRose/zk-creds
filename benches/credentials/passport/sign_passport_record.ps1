@@ -1,12 +1,11 @@
-# Builds the canonical student record blob (same layout as `StudentDump::write_blob` / `StudentInfo::record_blob`),
-# signs it with RSA PKCS#1 v1.5 + SHA-256, and writes base64 sig into `student_card.json`.
+# Builds the canonical passport RECORD_BLOB (same layout as `PassportDump::write_blob` / `PersonalInfo::record_blob`),
+# signs SHA256(blob) with RSA PKCS#1 v1.5 + SHA-256, and writes base64 sig into `passport_dump.json`.
 #
-# Default key: demo issuer private key in `credentials/passport/`.
-#   .\sign_student_record.ps1 -PrivateKeyPath ..\passport\issuer_demo_priv.pem
+#   .\sign_passport_record.ps1 -PrivateKeyPath .\issuer_demo_priv.pem
 #
 param(
-    [string]$JsonPath = (Join-Path $PSScriptRoot "student_card.json"),
-    [string]$PrivateKeyPath = (Join-Path $PSScriptRoot "..\passport\issuer_demo_priv.pem")
+    [string]$JsonPath = (Join-Path $PSScriptRoot "passport_dump.json"),
+    [string]$PrivateKeyPath = (Join-Path $PSScriptRoot "issuer_demo_priv.pem")
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,10 +13,9 @@ $ErrorActionPreference = "Stop"
 if (-not (Test-Path $JsonPath)) { Write-Error "Missing $JsonPath" }
 if (-not (Test-Path $PrivateKeyPath)) { Write-Error "Missing private key: $PrivateKeyPath" }
 
-$nameLen = 32
-$schoolLen = 32
-$collegeLen = 32
-$studentIdLen = 16
+$stateLen = 3
+$nameLen = 39
+$bioMax = 128
 
 $j = (Get-Content -LiteralPath $JsonPath -Raw -Encoding UTF8) | ConvertFrom-Json
 
@@ -30,12 +28,6 @@ function Pad-Utf8([string]$s, [int]$max) {
     return $buf
 }
 
-$blob = New-Object byte[] ($nameLen + $schoolLen + $collegeLen + $studentIdLen + 4 + 4)
-$o = 0
-[Array]::Copy((Pad-Utf8 $j.name $nameLen), 0, $blob, $o, $nameLen); $o += $nameLen
-[Array]::Copy((Pad-Utf8 $j.school $schoolLen), 0, $blob, $o, $schoolLen); $o += $schoolLen
-[Array]::Copy((Pad-Utf8 $j.college $collegeLen), 0, $blob, $o, $collegeLen); $o += $collegeLen
-[Array]::Copy((Pad-Utf8 $j.student_id $studentIdLen), 0, $blob, $o, $studentIdLen); $o += $studentIdLen
 function To-BE4([uint32]$v) {
     $b = New-Object byte[] 4
     $b[0] = [byte](($v -shr 24) -band 255)
@@ -44,10 +36,23 @@ function To-BE4([uint32]$v) {
     $b[3] = [byte]($v -band 255)
     return $b
 }
-$ey = To-BE4([uint32]$j.enrollment_year)
-[Array]::Copy($ey, 0, $blob, $o, 4); $o += 4
-$ex = To-BE4([uint32]$j.card_expiry)
-[Array]::Copy($ex, 0, $blob, $o, 4)
+
+$bioRaw = [Convert]::FromBase64String($j.biometrics)
+if ($bioRaw.Length -gt $bioMax) {
+    Write-Warning "biometrics decodes to $($bioRaw.Length) bytes; truncating to $bioMax"
+    $tmp = New-Object byte[] $bioMax
+    [Array]::Copy($bioRaw, $tmp, $bioMax)
+    $bioRaw = $tmp
+}
+
+$blob = New-Object byte[] ($stateLen + $nameLen + 4 + 4 + $bioMax)
+$o = 0
+[Array]::Copy((Pad-Utf8 $j.nationality $stateLen), 0, $blob, $o, $stateLen); $o += $stateLen
+[Array]::Copy((Pad-Utf8 $j.name $nameLen), 0, $blob, $o, $nameLen); $o += $nameLen
+[Array]::Copy((To-BE4([uint32]$j.dob)), 0, $blob, $o, 4); $o += 4
+[Array]::Copy((To-BE4([uint32]$j.passport_expiry)), 0, $blob, $o, 4); $o += 4
+[Array]::Clear($blob, $o, $bioMax)
+[Array]::Copy($bioRaw, 0, $blob, $o, [Math]::Min($bioRaw.Length, $bioMax))
 
 $tmp = [System.IO.Path]::GetTempFileName()
 $tmpSig = [System.IO.Path]::GetTempFileName()

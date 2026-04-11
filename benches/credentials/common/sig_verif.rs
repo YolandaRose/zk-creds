@@ -10,16 +10,15 @@ const DEMO_ISSUER_PUBKEY_PATH: &str = "benches/credentials/passport/issuer_demo_
 
 pub struct IssuerPubkey(RsaPublicKey);
 
-// 加载用于验证`IssuanceReq.sig`的RSA公钥，使用SHA-256(`econtent`)。
+// 加载用于验证签发请求里 RSA 签名的公钥（护照 / 学生证 / 工作证均对 **SHA256(规范 record blob)** 签名）。
 
 // 解析顺序：
 // 1. `ZKCREDS_ISSUER_PUBKEY_PEM` — PEM文本的公钥。
 // 2. `ZKCREDS_ISSUER_PUBKEY_PATH` — PEM文件的路径。
 // 3. `issuer_pubkey.pem` 如果存在（您的密钥）。
-// 4. 否则 `issuer_demo_pubkey.pem`（重新签名`passport_dump.json`与匹配的演示私钥；见`sign_econtent_for_issuer.ps1`）。
+// 4. 否则 `issuer_demo_pubkey.pem`（与 `passport_dump.json` 等一起用演示私钥重签；见 `sign_passport_record.ps1` / `sign_student_record.ps1`）。
 //
-// 签名必须是**OpenSSL兼容**RSASSA-PKCS1-v1_5 over SHA-256的原始`econtent`字节（与`Sha256::digest(&econtent)`相同）：
-// `openssl dgst -sha256 -sign <priv.pem> -out sig.bin econtent.bin`
+// 签名：OpenSSL `openssl dgst -sha256 -sign <priv.pem> -out sig.bin record_blob.bin`（与代码里 `record_digest` 一致）。
 pub fn load_issuer_pubkey() -> IssuerPubkey {
     let pem = if let Ok(pem) = env::var("ZKCREDS_ISSUER_PUBKEY_PEM") {
         pem

@@ -1,4 +1,4 @@
-﻿use crate::credentials::employee_id::params::{Fr, EmployeeComScheme, EmployeeComSchemeG};
+use crate::credentials::employee_id::params::{Fr, EmployeeComScheme, EmployeeComSchemeG};
 use crate::credentials::employee_id::employee_info::{EmployeeInfo, EmployeeInfoVar};
 
 use zkcreds::pred::PredicateChecker;

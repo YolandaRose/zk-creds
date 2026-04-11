@@ -1,12 +1,7 @@
-use crate::credentials::passport::{
-    params::{
-        Fr, PassportComScheme, PassportComSchemeG, DATE_LEN, DOB_OFFSET, EXPIRY_OFFSET, HASH_LEN,
-        NAME_LEN, NAME_OFFSET, NATIONALITY_OFFSET, PASSPORT_COM_PARAM, STATE_ID_LEN,
-    },
-    passport_dump::PassportDump,
+use crate::credentials::passport::params::{
+    Fr, PassportComScheme, PassportComSchemeG, BIOMETRIC_RAW_MAX, HASH_LEN, NAME_LEN,
+    PASSPORT_COM_PARAM, RECORD_BLOB_LEN, STATE_ID_LEN,
 };
-
-use core::borrow::Borrow;
 
 use sha2::{Digest, Sha256};
 use zkcreds::{
@@ -29,9 +24,9 @@ use ark_relations::{
 };
 use ark_std::rand::Rng;
 
-// 包含用户生物特征的简单blob
+/// 生物特征原始字节（承诺与展示电路使用 SHA256(raw)）
 #[derive(Clone, Default)]
-pub(crate) struct Biometrics(Vec<u8>);
+pub(crate) struct Biometrics(pub(crate) Vec<u8>);
 
 impl Biometrics {
     pub fn hash(&self) -> [u8; HASH_LEN] {
@@ -39,7 +34,6 @@ impl Biometrics {
     }
 }
 
-// 存储护照中数据组1和2中的子集信息
 #[derive(Clone)]
 pub(crate) struct PersonalInfo {
     nonce: ComNonce,
@@ -65,7 +59,6 @@ impl Default for PersonalInfo {
     }
 }
 
-// 存储护照中数据组1和2中的子集信息
 #[derive(Clone)]
 pub(crate) struct PersonalInfoVar {
     nonce: ComNonce,
@@ -77,37 +70,7 @@ pub(crate) struct PersonalInfoVar {
     pub(crate) biometric_hash: Bytestring<Fr>,
 }
 
-// 将YYMMDD形式的日期字符串转换为u32，其十进制表示为YYYYMMDD。
-// `not_after`是21世纪最早的一天，之后输入将不再有意义，例如，出生日期如果晚于今天将不再有意义，护照到期日期如果超过20年将不再有意义。
-fn date_to_u32(date: &[u8], not_after: u32) -> u32 {
-    assert_eq!(date.len(), DATE_LEN);
-
-    let century = 1000000;
-    let twenty_first_century = 20 * century;
-
-    // 将ASCII数字转换为它们表示的数字。例如，int(b"9") = 9 (mod |Fr|)
-    fn int(char: u8) -> u32 {
-        (char as u32) - 48
-    }
-
-    // 分别转换年、月和日。b"YY"成为YY (mod |Fr|), etc.
-    let year = (int(date[0]) * 10) + int(date[1]);
-    let month = (int(date[2]) * 10) + int(date[3]);
-    let day = (int(date[4]) * 10) + int(date[5]);
-
-    // 现在通过移位和添加来组合值。年份只给出为YY，所以我们不立即拥有年份的最高有效数字。目前假设它是21世纪
-    let mut d = twenty_first_century + (year * 10000) + (month * 100) + day;
-
-    // 如果日期不是21世纪，那么d超过`not_after`限制。如果是这样的话，那就去掉100年
-    if d > not_after {
-        d -= century;
-    }
-
-    d
-}
-
 impl PersonalInfo {
-    // 构造一个新的`PersonalInfo`，采样一个随机nonce用于承诺
     pub(crate) fn new<R: Rng>(
         rng: &mut R,
         nationality: [u8; STATE_ID_LEN],
@@ -130,36 +93,51 @@ impl PersonalInfo {
         }
     }
 
-    // 将给定的护照dump转换为结构化属性结构。需要`today`作为整数，其十进制表示为YYYYMMDD形式。`max_valid_years`是护照最长有效期，以年为单位。
-    pub fn from_passport<R: Rng>(
-        rng: &mut R,
-        dump: &PassportDump,
-        today: u32,
-        max_valid_years: u32,
-    ) -> PersonalInfo {
-        // 创建一个空的信息结构，我们将在其中填充数据
-        let mut info = PersonalInfo {
+    /// 从与 `PassportDump::write_blob` 一致的固定布局字节构造属性。
+    pub(crate) fn from_blob<R: Rng>(rng: &mut R, blob: &[u8; RECORD_BLOB_LEN]) -> PersonalInfo {
+        let mut off = 0usize;
+        let mut take = |len: usize| -> &[u8] {
+            let s = &blob[off..off + len];
+            off += len;
+            s
+        };
+        let mut nationality = [0u8; STATE_ID_LEN];
+        nationality.copy_from_slice(take(STATE_ID_LEN));
+        let mut name = [0u8; NAME_LEN];
+        name.copy_from_slice(take(NAME_LEN));
+        let dob_b = take(4);
+        let dob = u32::from_be_bytes(dob_b.try_into().unwrap());
+        let exp_b = take(4);
+        let passport_expiry = u32::from_be_bytes(exp_b.try_into().unwrap());
+        let bio_slice = take(BIOMETRIC_RAW_MAX);
+        let biometrics = Biometrics(bio_slice.to_vec());
+
+        PersonalInfo {
             nonce: ComNonce::rand(rng),
             seed: Fr::rand(rng),
-            ..Default::default()
-        };
+            nationality,
+            name,
+            dob,
+            passport_expiry,
+            biometrics,
+        }
+    }
 
-        // 最早的时间，之后到期将不再有意义。这用于解析护照中的未定义日期格式
-        let expiry_not_after = today + max_valid_years * 10000u32;
-
-        // 从DG1 blob中提取国籍、姓名和出生日期。生物特征被设置为整个DG2 blob
-        info.nationality
-            .copy_from_slice(&dump.dg1[NATIONALITY_OFFSET..NATIONALITY_OFFSET + STATE_ID_LEN]);
-        info.name
-            .copy_from_slice(&dump.dg1[NAME_OFFSET..NAME_OFFSET + NAME_LEN]);
-        info.dob = date_to_u32(&dump.dg1[DOB_OFFSET..DOB_OFFSET + DATE_LEN], today);
-        info.passport_expiry = date_to_u32(
-            &dump.dg1[EXPIRY_OFFSET..EXPIRY_OFFSET + DATE_LEN],
-            expiry_not_after,
-        );
-        info.biometrics.0 = dump.dg2.clone();
-
-        info
+    pub(crate) fn record_blob(&self) -> [u8; RECORD_BLOB_LEN] {
+        let mut blob = [0u8; RECORD_BLOB_LEN];
+        let mut off = 0usize;
+        blob[off..off + STATE_ID_LEN].copy_from_slice(&self.nationality);
+        off += STATE_ID_LEN;
+        blob[off..off + NAME_LEN].copy_from_slice(&self.name);
+        off += NAME_LEN;
+        blob[off..off + 4].copy_from_slice(&self.dob.to_be_bytes());
+        off += 4;
+        blob[off..off + 4].copy_from_slice(&self.passport_expiry.to_be_bytes());
+        off += 4;
+        let raw = self.biometrics.0.as_slice();
+        let n = raw.len().min(BIOMETRIC_RAW_MAX);
+        blob[off..off + n].copy_from_slice(&raw[..n]);
+        blob
     }
 
     pub fn biometrics_hash(&self) -> [u8; HASH_LEN] {
@@ -168,9 +146,7 @@ impl PersonalInfo {
 }
 
 impl Attrs<Fr, PassportComScheme> for PersonalInfo {
-    // 将属性序列化为字节
     fn to_bytes(&self) -> Vec<u8> {
-        // DOB字节需要匹配PersonalInfoVar版本，这是一个FpVar。在序列化之前转换为Fr
         let dob = Fr::from(self.dob);
         let passport_expiry = Fr::from(self.passport_expiry);
         let biometric_hash = self.biometrics.hash();
@@ -229,6 +205,7 @@ impl AttrsVar<Fr, PersonalInfo, PassportComScheme, PassportComSchemeG> for Perso
             .or(self.name.cs())
             .or(self.dob.cs())
             .or(self.passport_expiry.cs())
+            .or(self.biometric_hash.cs())
     }
 
     fn witness_attrs(
@@ -251,7 +228,6 @@ impl AttrsVar<Fr, PersonalInfo, PassportComScheme, PassportComSchemeG> for Perso
         let biometric_hash =
             Bytestring::new_witness(ns!(cs, "biometric_hash"), || Ok(biometric_hash))?;
 
-        // 返回见证的值
         Ok(PersonalInfoVar {
             nonce,
             seed,
@@ -271,6 +247,7 @@ impl AttrsVar<Fr, PersonalInfo, PassportComScheme, PassportComSchemeG> for Perso
             .cs()
             .or(self.name.cs())
             .or(self.dob.cs())
+            .or(self.passport_expiry.cs())
             .or(self.biometric_hash.cs());
         ComParamVar::<_, PassportComSchemeG, _>::new_constant(cs, &*PASSPORT_COM_PARAM)
     }

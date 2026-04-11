@@ -1,82 +1,95 @@
-use crate::credentials::passport::params::HASH_LEN;
+//! Flat JSON for passport benchmarks (`passport_dump.json`): canonical RECORD_BLOB + RSA sig.
 
-use serde::{de::Error as SError, Deserialize, Deserializer};
+use crate::credentials::passport::params::{
+    BIOMETRIC_RAW_MAX, NAME_LEN, RECORD_BLOB_LEN, STATE_ID_LEN,
+};
+use crate::credentials::passport::passport_info::PersonalInfo;
+
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-#[derive(Default, Deserialize)]
-pub struct PassportDump {
-    #[serde(deserialize_with = "bytes_from_b64")]
-    pub(crate) dg1: Vec<u8>,
-    #[serde(deserialize_with = "bytes_from_b64")]
-    pub(crate) dg2: Vec<u8>,
-    #[serde(rename = "pre-econtent", deserialize_with = "bytes_from_b64")]
-    pub(crate) pre_econtent: Vec<u8>,
-    #[serde(deserialize_with = "bytes_from_b64")]
-    pub(crate) econtent: Vec<u8>,
-    #[serde(deserialize_with = "bytes_from_b64")]
+#[derive(Deserialize)]
+pub(crate) struct PassportDump {
+    /// 3-letter country code, e.g. `USA`.
+    pub(crate) nationality: String,
+    pub(crate) name: String,
+    /// YYYYMMDD as integer, e.g. `19900101`.
+    pub(crate) dob: u32,
+    /// YYYYMMDD as integer, e.g. `20301231`.
+    pub(crate) passport_expiry: u32,
+    /// Raw biometric bytes (e.g. JPEG chunk); truncated/padded to `BIOMETRIC_RAW_MAX` in blob.
+    #[serde(with = "serde_bytes_base64")]
+    pub(crate) biometrics: Vec<u8>,
+    #[serde(with = "serde_bytes_base64")]
     pub(crate) sig: Vec<u8>,
-    #[serde(deserialize_with = "bytes_from_b64")]
-    pub(crate) cert: Vec<u8>,
-    #[serde(rename = "digest-alg")]
-    pub(crate) digest_alg: String,
-    #[serde(rename = "sig-alg")]
-    pub(crate) sig_alg: String,
 }
 
-// 计算econtent的散列
-impl PassportDump {
-    pub(crate) fn econtent_hash(&self) -> [u8; HASH_LEN] {
-        Sha256::digest(&self.econtent).into()
+mod serde_bytes_base64 {
+    use serde::{Deserialize, Deserializer};
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        base64::decode(s.as_bytes()).map_err(|e| {
+            serde::de::Error::custom(format!("base64 decode: {:?}", e))
+        })
     }
 }
 
-// 告诉serde如何从base64中反序列化字节
-fn bytes_from_b64<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let b64_str = String::deserialize(deserializer)?;
-    base64::decode(b64_str.as_bytes()).map_err(|e| SError::custom(format!("{:?}", e)))
+fn copy_padded_utf8(src: &str, dst: &mut [u8]) {
+    dst.fill(0);
+    let b = src.as_bytes();
+    let n = b.len().min(dst.len());
+    dst[..n].copy_from_slice(&b[..n]);
 }
 
-// 打印护照的机器可读区域（MRZ）中存储的所有信息，以及生物特征的散列
-impl std::fmt::Debug for PassportDump {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        use crate::credentials::passport::params::*;
+fn copy_padded_bytes(src: &[u8], dst: &mut [u8]) {
+    dst.fill(0);
+    let n = src.len().min(dst.len());
+    dst[..n].copy_from_slice(&src[..n]);
+}
 
+impl PassportDump {
+    pub(crate) fn record_digest(&self) -> [u8; 32] {
+        let mut blob = [0u8; RECORD_BLOB_LEN];
+        self.write_blob(&mut blob);
+        Sha256::digest(&blob).into()
+    }
+
+    fn write_blob(&self, blob: &mut [u8; RECORD_BLOB_LEN]) {
+        let mut o = 0usize;
+        copy_padded_utf8(&self.nationality, &mut blob[o..o + STATE_ID_LEN]);
+        o += STATE_ID_LEN;
+        copy_padded_utf8(&self.name, &mut blob[o..o + NAME_LEN]);
+        o += NAME_LEN;
+        blob[o..o + 4].copy_from_slice(&self.dob.to_be_bytes());
+        o += 4;
+        blob[o..o + 4].copy_from_slice(&self.passport_expiry.to_be_bytes());
+        o += 4;
+        copy_padded_bytes(&self.biometrics, &mut blob[o..o + BIOMETRIC_RAW_MAX]);
+    }
+
+    pub(crate) fn to_personal_info<R: ark_std::rand::Rng>(
+        &self,
+        rng: &mut R,
+    ) -> (PersonalInfo, [u8; RECORD_BLOB_LEN]) {
+        let mut blob = [0u8; RECORD_BLOB_LEN];
+        self.write_blob(&mut blob);
+        let info = PersonalInfo::from_blob(rng, &blob);
+        (info, blob)
+    }
+}
+
+impl std::fmt::Debug for PassportDump {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PassportDump")
-            .field(
-                "issuer",
-                &String::from_utf8_lossy(&self.dg1[ISSUER_OFFSET..ISSUER_OFFSET + STATE_ID_LEN]),
-            )
-            .field(
-                "name",
-                &String::from_utf8_lossy(&self.dg1[NAME_OFFSET..NAME_OFFSET + NAME_LEN]),
-            )
-            .field(
-                "document number",
-                &String::from_utf8_lossy(
-                    &self.dg1[DOCUMENT_NUMBER_OFFSET..DOCUMENT_NUMBER_OFFSET + DOCUMENT_NUMBER_LEN],
-                ),
-            )
-            .field(
-                "nationality",
-                &String::from_utf8_lossy(
-                    &self.dg1[NATIONALITY_OFFSET..NATIONALITY_OFFSET + STATE_ID_LEN],
-                ),
-            )
-            .field(
-                "date of birth",
-                &String::from_utf8_lossy(&self.dg1[DOB_OFFSET..DOB_OFFSET + DATE_LEN]),
-            )
-            .field(
-                "expiry",
-                &String::from_utf8_lossy(&self.dg1[EXPIRY_OFFSET..EXPIRY_OFFSET + DATE_LEN]),
-            )
-            .field(
-                "biometrics hash",
-                &format_args!("{:x}", Sha256::digest(&self.dg2)),
-            )
+            .field("nationality", &self.nationality)
+            .field("name", &self.name)
+            .field("dob", &self.dob)
+            .field("passport_expiry", &self.passport_expiry)
+            .field("biometrics_len", &self.biometrics.len())
             .finish()
     }
 }

@@ -7,12 +7,11 @@ mod preds;
 
 use crate::credentials::common::sig_verif::load_issuer_pubkey;
 use crate::credentials::passport::{
-    issuance_checker::{IssuanceReq, PassportHashChecker},
+    issuance_checker::{IssuanceReq, PassportRecordHashChecker},
     params::{
         ComForest, ComForestRoots, ComTree, ComTreePath, ForestProof, ForestProvingKey,
         ForestVerifyingKey, PassportComScheme, PassportComSchemeG, PredProof, PredProvingKey,
         PredVerifyingKey, TreeProof, TreeProvingKey, TreeVerifyingKey, H, HG, MERKLE_CRH_PARAM,
-        STATE_ID_LEN,
     },
     passport_dump::PassportDump,
     passport_info::{PersonalInfo, PersonalInfoVar},
@@ -47,11 +46,9 @@ const NUM_TREES: usize = 2usize.pow(LOG2_NUM_TREES);
 
 const POSEIDON_WIDTH: u8 = 5;
 
-//护照验证的示例参数。所有护照必须在今天之后到期，且由ISSUING_STATE颁发
+// 护照验证的示例参数（展示谓词）：到期日、年龄等
 const TODAY: u32 = 20220101u32;
-const MAX_VALID_YEARS: u32 = 10u32;
 const TWENTY_ONE_YEARS_AGO: u32 = TODAY - 210000;
-const ISSUING_STATE: [u8; STATE_ID_LEN] = *b"USA";
 const HOLDER_TAG_RAW: u64 = 424242;
 
 fn load_dump() -> PassportDump {
@@ -97,14 +94,14 @@ fn gen_issuance_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingKey) {
         PassportComSchemeG,
         H,
         HG,
-    >(rng, PassportHashChecker::default())
+    >(rng, PassportRecordHashChecker::default())
     .unwrap();
 
     (pk.clone(), pk.prepare_verifying_key())
 }
 
-{//生成年龄、面部和到期日的CRS
-fn gen_agefaceexpiry_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingKey) 
+//生成年龄、面部和到期日的CRS
+fn gen_agefaceexpiry_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingKey) {
     // 生成哈希检查器电路的CRS
     let pk = zkcreds::pred::gen_pred_crs::<
         _,
@@ -279,17 +276,14 @@ fn user_req_issuance<R: Rng>(
     c: &mut Criterion,
     issuance_pk: &PredProvingKey,
 ) -> (PersonalInfo, IssuanceReq) {
-    // 加载护照并解析为`PersonalInfo`结构
     let dump = load_dump();
-    let mut my_info = PersonalInfo::from_passport(rng, &dump, TODAY, MAX_VALID_YEARS);
+    let (mut my_info, _) = dump.to_personal_info(rng);
     my_info.seed = Fr::from(HOLDER_TAG_RAW);
     let attrs_com = my_info.commit();
 
-    // 使用私有数据生成一个哈希检查器结构
-    let hash_checker =
-        PassportHashChecker::from_passport(&dump, ISSUING_STATE, TODAY, MAX_VALID_YEARS);
+    let hash_checker = PassportRecordHashChecker::from_holder(&my_info);
 
-    // 证明护照哈希正确计算
+    // 证明记录 blob 与属性承诺一致
     c.bench_function("Passport: proving birth", |b| {
         b.iter(|| prove_birth(rng, issuance_pk, hash_checker.clone(), my_info.clone()).unwrap())
     });
@@ -298,8 +292,8 @@ fn user_req_issuance<R: Rng>(
     // 构建颁发请求
     let req = IssuanceReq {
         attrs_com,
-        econtent_hash: dump.econtent_hash(),
-        sig: dump.sig,
+        record_digest: dump.record_digest(),
+        sig: dump.sig.clone(),
         hash_proof,
     };
 
@@ -314,15 +308,14 @@ fn issue(
     req: &IssuanceReq,
 ) -> ComTreePath {
     // 检查哈希是否正确计算且哈希的签名正确
-    let hash_checker =
-        PassportHashChecker::from_issuance_req(req, ISSUING_STATE, TODAY, MAX_VALID_YEARS);
+    let hash_checker = PassportRecordHashChecker::from_issuance_req(req);
     let sig_pubkey = load_issuer_pubkey();
     c.bench_function("Passport: verifying birth+sig", |b| {
         b.iter(|| {
             assert!(
                 verify_birth(birth_vk, &req.hash_proof, &hash_checker, &req.attrs_com).unwrap()
             );
-            assert!(sig_pubkey.verify(&req.sig, &req.econtent_hash));
+            assert!(sig_pubkey.verify(&req.sig, &req.record_digest));
         })
     });
 
