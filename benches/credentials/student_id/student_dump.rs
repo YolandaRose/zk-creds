@@ -16,7 +16,7 @@ pub(crate) struct StudentDump {
     #[serde(rename = "student_id")]
     pub(crate) student_no: String,
     pub(crate) enrollment_year: u32,
-    /// YYYYMMDD as integer, e.g. `20301231`.
+    /// 到期日：须为 **8 位** `YYYYMMDD` 整数（与 `STUDENT_CARD_TODAY` 同形比较）；不足 8 位会导致整数值小于基准日而谓词失败。
     pub(crate) card_expiry: u32,
     #[serde(with = "serde_bytes_base64")]
     pub(crate) sig: Vec<u8>,

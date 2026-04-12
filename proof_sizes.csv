@@ -1,9 +1,6 @@
 description,proof_size_in_bytes
-Passport: Proving empty linkage,744
-Passport: Proving agefaceexpiry linkage,1064
-Passport: Proving agemultishowexpiry linkage,1064
-Passport: Proving expiry linkage,1064
-Passport: Proving ageexpiry+multishow linkage,1704
+Employee ID: proving empty linkage,744
+Employee ID: proving expiry linkage,1384
 Pseudonymous show,1064
 Multishow,1064
 Revealing multishow,1064

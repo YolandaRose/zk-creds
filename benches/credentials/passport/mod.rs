@@ -309,7 +309,7 @@ fn user_req_issuance<R: Rng>(
     let hash_proof = prove_birth(rng, issuance_pk, hash_checker, my_info.clone()).unwrap();
 
     println!(
-        "  [用户] 已生成「记录 blob ↔ 属性承诺」一致性证明（Groth16 birth proof），准备提交签发请求。"
+        "[用户] 已生成「记录 blob ↔ 属性承诺」一致性证明（Groth16 birth proof），准备提交签发请求。"
     );
 
     // 构建颁发请求

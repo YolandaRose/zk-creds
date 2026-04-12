@@ -57,7 +57,10 @@ try {
     if ($LASTEXITCODE -ne 0) { Write-Error "openssl sign failed: $LASTEXITCODE" }
     $sigB64 = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($tmpSig))
     $j.sig = $sigB64
-    $j | ConvertTo-Json | Set-Content -LiteralPath $JsonPath -Encoding UTF8
+    # 无 BOM 的 UTF-8，避免 Rust serde_json 在首字节解析失败
+    $jsonText = ($j | ConvertTo-Json)
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($JsonPath, $jsonText, $utf8NoBom)
     Write-Host "Updated sig in $JsonPath"
 }
 finally {

@@ -57,7 +57,9 @@ try {
     if ($LASTEXITCODE -ne 0) { Write-Error "openssl sign failed: $LASTEXITCODE" }
     $sigB64 = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($tmpSig))
     $j.sig = $sigB64
-    $j | ConvertTo-Json | Set-Content -LiteralPath $JsonPath -Encoding UTF8
+    $jsonText = ($j | ConvertTo-Json)
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($JsonPath, $jsonText, $utf8NoBom)
     Write-Host "Updated sig in $JsonPath"
 }
 finally {
