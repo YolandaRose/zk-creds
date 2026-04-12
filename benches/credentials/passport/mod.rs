@@ -32,9 +32,10 @@ use zkcreds::{
 };
 
 use std::fs::File;
+use std::path::Path;
 
 use ark_bls12_381::{Bls12_381, Fr};
-use ark_ff::UniformRand;
+use ark_ff::{BigInteger, PrimeField, UniformRand};
 use ark_std::rand::{CryptoRng, Rng};
 use arkworks_utils::Curve;
 use criterion::Criterion;
@@ -51,9 +52,27 @@ const TODAY: u32 = 20220101u32;
 const TWENTY_ONE_YEARS_AGO: u32 = TODAY - 210000;
 const HOLDER_TAG_RAW: u64 = 424242;
 
+/// 用于演示日志的凭证承诺短标识（域元素字节前缀）
+fn cred_short_token(cred: &Com<PassportComScheme>) -> String {
+    cred.into_repr()
+        .to_bytes_le()
+        .iter()
+        .take(12)
+        .map(|b| format!("{:02x}", b))
+        .collect::<Vec<_>>()
+        .join("")
+}
+
 fn load_dump() -> PassportDump {
-    let file = File::open("benches/credentials/passport/passport_dump.json").unwrap();
-    serde_json::from_reader(file).unwrap()
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("benches/credentials/passport/passport_dump.json");
+    let file = File::open(&path)
+        .unwrap_or_else(|e| panic!("open passport_dump.json ({}): {e}", path.display()));
+    serde_json::from_reader(file).unwrap_or_else(|e| {
+        panic!(
+            "parse passport_dump.json ({}): {e}. 若文件为空或损坏，请运行 sign_passport_record.ps1",
+            path.display()
+        )
+    })
 }
 
 //初始化树参数
@@ -289,6 +308,10 @@ fn user_req_issuance<R: Rng>(
     });
     let hash_proof = prove_birth(rng, issuance_pk, hash_checker, my_info.clone()).unwrap();
 
+    println!(
+        "  [用户] 已生成「记录 blob ↔ 属性承诺」一致性证明（Groth16 birth proof），准备提交签发请求。"
+    );
+
     // 构建颁发请求
     let req = IssuanceReq {
         attrs_com,
@@ -319,8 +342,32 @@ fn issue(
         })
     });
 
-    // 插入
-    state.com_forest.trees[state.next_free_tree].insert(state.next_free_leaf, &req.attrs_com)
+    assert!(
+        verify_birth(birth_vk, &req.hash_proof, &hash_checker, &req.attrs_com).unwrap(),
+        "发行方：出生证明验证失败"
+    );
+    assert!(
+        sig_pubkey.verify(&req.sig, &req.record_digest),
+        "发行方：RSA 签名与 record_digest 不一致"
+    );
+
+    let tree_idx = state.next_free_tree;
+    let leaf_idx = state.next_free_leaf;
+    let token = cred_short_token(&req.attrs_com);
+
+    println!("[发行方] 身份与材料验证通过：JSON 记录 SHA256 与链下 RSA 签名一致；链上出生证明（Groth16）验证通过。");
+    println!(
+        "[发行方] 已颁发凭证。承诺摘要前缀: {}… ｜ 请妥善保管凭证秘密与随机数（nonce/seed）。",
+        token
+    );
+
+    let path = state.com_forest.trees[tree_idx].insert(leaf_idx, &req.attrs_com);
+    println!(
+        "[发行方] 承诺已登记至 Merkle 森林：树索引 = {}，叶索引 = {}。",
+        tree_idx, leaf_idx
+    );
+
+    path
 }
 
 //获取年龄检查器
@@ -405,6 +452,7 @@ fn user_prove_tree_memb<R: Rng>(
     auth_path: &ComTreePath,
     tree_pk: &TreeProvingKey,
     cred: Com<PassportComScheme>,
+    user_log: &str,
 ) -> TreeProof {
     c.bench_function("Passport: proving tree", |b| {
         b.iter(|| {
@@ -413,9 +461,11 @@ fn user_prove_tree_memb<R: Rng>(
                 .unwrap()
         })
     });
-    auth_path
+    let proof = auth_path
         .prove_membership(rng, tree_pk, &*MERKLE_CRH_PARAM, cred)
-        .unwrap()
+        .unwrap();
+    println!("[用户] {}", user_log);
+    proof
 }
 
 //用户证明森林成员
@@ -426,6 +476,7 @@ fn user_prove_forest_memb<R: Rng>(
     auth_path: &ComTreePath,
     forest_pk: &ForestProvingKey,
     cred: Com<PassportComScheme>,
+    user_log: &str,
 ) -> ForestProof {
     c.bench_function("Passport: proving forest", |b| {
         b.iter(|| {
@@ -434,9 +485,11 @@ fn user_prove_forest_memb<R: Rng>(
                 .unwrap()
         })
     });
-    roots
+    let proof = roots
         .prove_membership(rng, forest_pk, auth_path.root(), cred)
-        .unwrap()
+        .unwrap();
+    println!("[用户] {}", user_log);
+    proof
 }
 
 // 用户构造年龄和面部的谓词证明
@@ -444,6 +497,7 @@ fn user_prove_pred<R, P>(
     rng: &mut R,
     c: &mut Criterion,
     bench_name: &str,
+    user_log: &str,
     pk: &PredProvingKey,
     checker: &P,
     info: &PersonalInfo,
@@ -472,6 +526,8 @@ where
     )
     .unwrap());
 
+    println!("[用户] {}", user_log);
+
     proof
 }
 
@@ -481,6 +537,8 @@ fn user_link<R: Rng + CryptoRng>(
     c: &mut Criterion,
     proof_bench_name: &str,
     verif_bench_name: &str,
+    stage_title: &str,
+    stage_detail: &str,
     tree_vk: &TreeVerifyingKey,
     forest_vk: &ForestVerifyingKey,
     roots: &ComForestRoots,
@@ -492,6 +550,7 @@ fn user_link<R: Rng + CryptoRng>(
     forest_proof: &ForestProof,
     pred_proofs: Vec<PredProof>,
 ) {
+    let num_predicates = pred_vks.len();
     let link_vk = LinkVerifyingKey {
         pred_inputs,
         prepared_roots: roots.prepare(&forest_vk).unwrap(),
@@ -516,12 +575,30 @@ fn user_link<R: Rng + CryptoRng>(
         b.iter(|| assert!(verif_link_proof(&link_proof, &link_vk).unwrap()))
     });
 
-    println!("The bouncer unlatches the velvet rope. The user walks through.");
+    assert!(
+        verif_link_proof(&link_proof, &link_vk).unwrap(),
+        "验证方：链接证明验证失败"
+    );
+    println!("\n──────── {} ────────", stage_title);
+    println!(
+        "[验证方] Merkle 树成员、森林成员、凭证承诺与公开输入一致性：通过（链接证明 Groth16-Sahai 验证通过）。"
+    );
+    if num_predicates == 0 {
+        println!("[验证方] 本阶段未挂载数值谓词，仅完成成员资格链接。");
+    } else {
+        println!(
+            "[验证方] 本阶段已链接谓词证明 {} 份，凭证有效性（谓词与承诺绑定）：通过。",
+            num_predicates
+        );
+    }
+    println!("[验证方] {}", stage_detail);
 }
 
 //护照验证基准测试
 pub fn bench_passport(c: &mut Criterion) {
     let mut rng = ark_std::test_rng();
+
+    println!("\n======== 护照凭证全流程基准（含控制台演示日志）========\n");
 
     // 生成所有Groth16和Groth-Sahai的证明和验证密钥
     let (issuance_pk, issuance_vk) = gen_issuance_crs(&mut rng);
@@ -548,6 +625,7 @@ pub fn bench_passport(c: &mut Criterion) {
         &mut rng,
         c,
         "Passport: proving age+face+expiry",
+        "年龄阈值属性通过；人脸/生物特征绑定通过；护照有效期（未过期）通过；承诺与 Merkle 根一致（谓词 Groth16 本地自检通过）。",
         &agefaceexpiry_pk,
         &get_agefaceexpiry_checker(&personal_info),
         &personal_info,
@@ -557,6 +635,7 @@ pub fn bench_passport(c: &mut Criterion) {
         &mut rng,
         c,
         "Passport: proving age+multishow+expiry",
+        "年龄阈值属性通过；受控多次展示令牌通过；护照有效期（未过期）通过；承诺与 Merkle 根一致（谓词 Groth16 本地自检通过）。",
         &agemultishowexpiry_pk,
         &get_agemultishowexpiry_checker(&personal_info),
         &personal_info,
@@ -566,6 +645,7 @@ pub fn bench_passport(c: &mut Criterion) {
         &mut rng,
         c,
         "Passport: proving age+expiry",
+        "年龄阈值属性通过；护照有效期（未过期）通过；承诺与 Merkle 根一致（谓词 Groth16 本地自检通过）。",
         &ageexpiry_pk,
         &get_ageexpiry_checker(),
         &personal_info,
@@ -575,6 +655,7 @@ pub fn bench_passport(c: &mut Criterion) {
         &mut rng,
         c,
         "Passport: proving expiry",
+        "护照有效期（未过期）通过；承诺与 Merkle 根一致（谓词 Groth16 本地自检通过）。",
         &expiry_pk,
         &get_expiry_checker(),
         &personal_info,
@@ -584,6 +665,7 @@ pub fn bench_passport(c: &mut Criterion) {
         &mut rng,
         c,
         "Passport: proving multishow",
+        "受控多次展示令牌通过；承诺与 Merkle 根一致（谓词 Groth16 本地自检通过）。",
         &multishow_pk,
         &get_multishow_checker(&personal_info),
         &personal_info,
@@ -593,6 +675,7 @@ pub fn bench_passport(c: &mut Criterion) {
         &mut rng,
         c,
         "Passport: proving holder tag",
+        "持有者标签与公开值一致；承诺与 Merkle 根一致（谓词 Groth16 本地自检通过）。",
         &holdertag_pk,
         &get_holdertag_checker(),
         &personal_info,
@@ -603,8 +686,23 @@ pub fn bench_passport(c: &mut Criterion) {
     let roots = issuer_state.com_forest.roots();
     // 成员证明：用户证明树和森林成员
 
-    let tree_proof = user_prove_tree_memb(&mut rng, c, &auth_path, &tree_pk, cred);
-    let forest_proof = user_prove_forest_memb(&mut rng, c, &roots, &auth_path, &forest_pk, cred);
+    let tree_proof = user_prove_tree_memb(
+        &mut rng,
+        c,
+        &auth_path,
+        &tree_pk,
+        cred,
+        "已生成 Merkle 树成员证明（Groth16），凭证承诺与路径一致。",
+    );
+    let forest_proof = user_prove_forest_memb(
+        &mut rng,
+        c,
+        &roots,
+        &auth_path,
+        &forest_pk,
+        cred,
+        "已生成森林成员证明（Groth16），成员树根属于公告森林根列表。",
+    );
 
     let pred_inputs = PredPublicInputs::default();
     user_link(
@@ -612,6 +710,8 @@ pub fn bench_passport(c: &mut Criterion) {
         c,
         "Passport: Proving empty linkage",
         "Passport: Verifying empty linkage",
+        "阶段：仅成员资格链接",
+        "本阶段无附加谓词；验证方校验树/森林成员与链接一致性。",
         &tree_vk,
         &forest_vk,
         &roots,
@@ -634,6 +734,8 @@ pub fn bench_passport(c: &mut Criterion) {
         c,
         "Passport: Proving agefaceexpiry linkage",
         "Passport: Verifying agefaceexpiry linkage",
+        "阶段：年龄+人脸+到期链接",
+        "谓词含年龄阈值、面部哈希绑定、护照未过期；与成员资格证明一并链接。",
         &tree_vk,
         &forest_vk,
         &roots,
@@ -656,6 +758,8 @@ pub fn bench_passport(c: &mut Criterion) {
         c,
         "Passport: Proving agemultishowexpiry linkage",
         "Passport: Verifying agemultishowexpiry linkage",
+        "阶段：年龄+多次展示+到期链接",
+        "谓词含年龄、受控多次展示、护照未过期；与成员资格证明一并链接。",
         &tree_vk,
         &forest_vk,
         &roots,
@@ -675,6 +779,8 @@ pub fn bench_passport(c: &mut Criterion) {
         c,
         "Passport: Proving expiry linkage",
         "Passport: Verifying expiry linkage",
+        "阶段：到期日链接",
+        "谓词仅校验护照未过期；与成员资格证明一并链接。",
         &tree_vk,
         &forest_vk,
         &roots,
@@ -696,6 +802,8 @@ pub fn bench_passport(c: &mut Criterion) {
         c,
         "Passport: Proving ageexpiry+multishow linkage",
         "Passport: Verifying ageexpiry+multishow linkage",
+        "阶段：年龄+到期+多次展示+持有者标签链接",
+        "多份谓词证明与树/森林成员证明在同一承诺与 Merkle 根下链接验证。",
         &tree_vk,
         &forest_vk,
         &roots,

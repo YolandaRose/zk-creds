@@ -4,7 +4,11 @@ use crate::credentials::employee_id::employee_info::{EmployeeInfo, EmployeeInfoV
 use zkcreds::pred::PredicateChecker;
 
 use ark_ff::ToConstraintField;
-use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar};
+use ark_r1cs_std::{
+    alloc::AllocVar,
+    eq::EqGadget,
+    fields::{fp::FpVar, FieldVar},
+};
 use ark_relations::{
     ns,
     r1cs::{ConstraintSystemRef, SynthesisError},

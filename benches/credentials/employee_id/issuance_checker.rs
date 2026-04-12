@@ -1,4 +1,4 @@
-﻿use crate::credentials::passport::ark_sha256::Sha256Gadget;
+use crate::credentials::passport::ark_sha256::Sha256Gadget;
 use crate::credentials::employee_id::params::{
     Fr, PredProof, EmployeeComScheme, EmployeeComSchemeG, DEPARTMENT_LEN, NAME_LEN, RECORD_BLOB_LEN,
     COMPANY_LEN, EMPLOYEE_NO_LEN,
@@ -11,7 +11,7 @@ use ark_ff::ToConstraintField;
 use ark_r1cs_std::{
     bits::{boolean::Boolean, uint8::UInt8, ToBitsGadget},
     eq::EqGadget,
-    fields::fp::FpVar,
+    fields::{fp::FpVar, FieldVar},
 };
 use ark_relations::{
     ns,

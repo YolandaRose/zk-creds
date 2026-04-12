@@ -17,9 +17,9 @@ use util::new_size_file as setup; // 需要设置日志证明大小到CSV
 criterion_group!(
     benches,
     bench_passport,
-    bench_student_id,
-    bench_employee_id,
-    bench_cross_credential,
+    // bench_student_id,
+    // bench_employee_id,
+    // bench_cross_credential,
     /*
     bench_empty,
     com_scaling::bench_pred_proof_0::bench_pred_proof_0,

@@ -25,6 +25,7 @@ use zkcreds::{
 };
 
 use std::fs::File;
+use std::path::Path;
 
 use ark_bls12_381::{Bls12_381, Fr};
 use ark_ff::UniformRand;
@@ -39,10 +40,17 @@ const NUM_TREES: usize = 2usize.pow(LOG2_NUM_TREES);
 const EMPLOYEE_CARD_TODAY: u32 = 20220101;
 const HOLDER_TAG_RAW: u64 = 424242;
 
-//加载工作证数据
+// 加载工作证数据（相对 `CARGO_MANIFEST_DIR`，避免工作目录不对时 JSON 解析失败）
 fn load_dump() -> EmployeeDump {
-    let file = File::open("benches/credentials/employee_id/employee_card.json").unwrap();
-    serde_json::from_reader(file).unwrap()
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("benches/credentials/employee_id/employee_card.json");
+    let file = File::open(&path)
+        .unwrap_or_else(|e| panic!("open employee_card.json ({}): {e}", path.display()));
+    serde_json::from_reader(file).unwrap_or_else(|e| {
+        panic!(
+            "parse employee_card.json ({}): {e}. 若文件为空或损坏，请运行 sign_employee_record.ps1",
+            path.display()
+        )
+    })
 }
 
 //随机生成树

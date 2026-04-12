@@ -13,7 +13,7 @@ use ark_ff::ToConstraintField;
 use ark_r1cs_std::{
     bits::{boolean::Boolean, uint8::UInt8, ToBitsGadget},
     eq::EqGadget,
-    fields::fp::FpVar,
+    fields::{fp::FpVar, FieldVar},
 };
 use ark_relations::{
     ns,
