@@ -1,4 +1,4 @@
-﻿# Builds the canonical employee record blob (same layout as `EmployeeDump::write_blob` / `EmployeeInfo::record_blob`),
+# Builds the canonical employee record blob (same layout as `EmployeeDump::write_blob` / `EmployeeInfo::record_blob`),
 # signs it with RSA PKCS#1 v1.5 + SHA-256, and writes base64 sig into `employee_card.json`.
 #
 # Default key: demo issuer private key next to passport bench.

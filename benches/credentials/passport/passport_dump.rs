@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 
 #[derive(Deserialize)]
 pub(crate) struct PassportDump {
-    /// 3-letter country code, e.g. `USA`.
+    /// 3-letter country code, e.g. `CHN`.
     pub(crate) nationality: String,
     pub(crate) name: String,
     /// YYYYMMDD as integer, e.g. `19900101`.

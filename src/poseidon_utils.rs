@@ -1,5 +1,4 @@
-//! Defines some structs and functions for commitments and hashes based on the Poseidon hash
-//! function.
+//! 定义了一些基于 Poseidon 哈希函数的承诺和哈希的结构体和函数
 
 use crate::zk_utils::UnitVar;
 
@@ -25,7 +24,7 @@ use arkworks_utils::{bytes_matrix_to_f, bytes_vec_to_f, Curve};
 use lazy_static::lazy_static;
 use rand::Rng;
 
-/// A commitment nonce is always just a 256 bit value
+// 承诺随机数是一个256位的值
 #[derive(Clone, Default, PartialEq, Eq)]
 pub struct ComNonce(pub [u8; 32]);
 
@@ -48,6 +47,7 @@ impl ComNonce {
     }
 }
 
+// 设置Poseidon参数
 pub fn setup_poseidon_params<F: PrimeField>(
     curve: Curve,
     exp: i8,
@@ -69,18 +69,19 @@ pub fn setup_poseidon_params<F: PrimeField>(
     }
 }
 
-// Pick global parameters for Poseidon over BLS12-381
+// 选择BLS12-381上的Poseidon的全局参数
 const POSEIDON_WIDTH: u8 = 5;
-const COM_DOMAIN_SEP: &[u8] = b"pcom";
-const CRH_DOMAIN_SEP: &[u8] = b"pcrh";
+//domain_sep:为了区分不同用途的哈希输入
+const COM_DOMAIN_SEP: &[u8] = b"pcom";//用于承诺
+const CRH_DOMAIN_SEP: &[u8] = b"pcrh";//用于Merkle tree、proof of membership
 lazy_static! {
     static ref BLS12_POSEIDON_PARAMS: PoseidonParameters<BlsFr> =
         setup_poseidon_params(Curve::Bls381, 3, POSEIDON_WIDTH);
 }
 
-/// A commitment scheme defined using the Poseidon hash function over BLS12-381
+// 使用BLS12-381上的Poseidon哈希函数的承诺方案
 pub struct Bls12PoseidonCommitter;
-
+// 迭代地计算Poseidon哈希
 fn poseidon_iterated_hash(input: &[BlsFr]) -> BlsFr {
     let hasher = Poseidon::new(BLS12_POSEIDON_PARAMS.clone());
     let first_block_len = core::cmp::min(input.len(), (POSEIDON_WIDTH - 1) as usize);
@@ -94,6 +95,7 @@ fn poseidon_iterated_hash(input: &[BlsFr]) -> BlsFr {
     running_hash
 }
 
+// 迭代地计算Poseidon哈希的ZK电路gadget版本
 fn poseidon_iterated_hash_gadget(
     cs: &mut ConstraintSystemRef<BlsFr>,
     input: &[FpVar<BlsFr>],
@@ -112,9 +114,9 @@ fn poseidon_iterated_hash_gadget(
     Ok(running_hash)
 }
 
+// 实现BLS12-381上的Poseidon承诺方案
 impl CommitmentScheme for Bls12PoseidonCommitter {
     type Output = BlsFr;
-    // We don't need parameters because they're set globally in the above lazy_static
     type Parameters = ();
     type Randomness = BlsFr;
 
@@ -122,29 +124,30 @@ impl CommitmentScheme for Bls12PoseidonCommitter {
         Ok(())
     }
 
-    // Computes H(domain_sep || randomness || input)
+    // 计算H(domain_sep || randomness || input)
     fn commit(
         _parameters: &Self::Parameters,
         input: &[u8],
         r: &Self::Randomness,
     ) -> Result<Self::Output, ArkError> {
-        // Concat all the inputs and pack them into field elements
+        // 连接所有输入并打包成域元素
         let hash_input: Vec<u8> = [COM_DOMAIN_SEP, &to_bytes!(r).unwrap(), input].concat();
         let packed_input: Vec<BlsFr> = hash_input
             .to_field_elements()
             .expect("could not pack inputs");
 
-        // Compute the hash
+        // 计算哈希
         Ok(poseidon_iterated_hash(&packed_input))
     }
 }
 
+// 实现BLS12-381上的Poseidon承诺方案的ZK电路gadget版本
 impl CommitmentGadget<Bls12PoseidonCommitter, BlsFr> for Bls12PoseidonCommitter {
     type OutputVar = FpVar<BlsFr>;
     type ParametersVar = UnitVar<BlsFr>;
     type RandomnessVar = FpVar<BlsFr>;
 
-    // Computes H(domain_sep || randomness || input)
+    // 计算H(domain_sep || randomness || input)
     fn commit(
         _parameters: &Self::ParametersVar,
         input: &[UInt8<BlsFr>],
@@ -152,7 +155,7 @@ impl CommitmentGadget<Bls12PoseidonCommitter, BlsFr> for Bls12PoseidonCommitter 
     ) -> Result<Self::OutputVar, SynthesisError> {
         let mut cs = input.cs();
 
-        // Concat all the inputs and pack them into field elements
+        // 连接所有输入并打包成域元素
         let hash_input: Vec<UInt8<BlsFr>> = [
             &UInt8::constant_vec(COM_DOMAIN_SEP),
             &r.to_bytes().unwrap(),
@@ -163,21 +166,21 @@ impl CommitmentGadget<Bls12PoseidonCommitter, BlsFr> for Bls12PoseidonCommitter 
             .to_constraint_field()
             .expect("could not pack inputs");
 
-        // Compute the hash
+        // 计算哈希
         poseidon_iterated_hash_gadget(&mut cs, &packed_input)
     }
 }
 
-/// Represents the collision-resistant hashing functionality of Poseidon over BLS12-381
+// 表示BLS12-381上的Poseidon的抗碰撞哈希功能
 pub struct Bls12PoseidonCrh;
 
-// TODO: Once arkworks-native-gadgets updates to the new Arkworks version, update this to use the
-// new Arkworks trait TwoToOneCRHScheme
+// TODO: 一旦arkworks-native-gadgets更新到新的Arkworks版本，更新这个使用新的Arkworks特征TwoToOneCRHScheme
 // https://github.com/webb-tools/arkworks-gadgets/blob/master/arkworks-native-gadgets/src/mimc.rs#L2=
 use ark_crypto_primitives::crh::{TwoToOneCRH, TwoToOneCRHGadget};
 
+// 实现BLS12-381上的Poseidon的抗碰撞哈希功能
 impl TwoToOneCRH for Bls12PoseidonCrh {
-    // This doesn't matter. We only use it for Merkle tree stuff
+    // 这无关紧要，只用于默克尔树
     const LEFT_INPUT_SIZE_BITS: usize = 0;
     const RIGHT_INPUT_SIZE_BITS: usize = 0;
 
@@ -188,41 +191,41 @@ impl TwoToOneCRH for Bls12PoseidonCrh {
         Ok(())
     }
 
-    // Evaluates H(left || right)
+    // 计算H(left || right)
     fn evaluate(_: &(), left_input: &[u8], right_input: &[u8]) -> Result<BlsFr, ArkError> {
-        // We only use this for Merkle tree hashing over BLS12-381, so just fix the input len to 32
+        // 只用于BLS12-381上的默克尔树哈希，所以只需将输入长度固定为32
         assert_eq!(left_input.len(), 32);
         assert_eq!(right_input.len(), 32);
 
-        // Concat all the inputs and pack them into field elements
+        // 连接所有输入并打包成域元素
         let hash_input: Vec<u8> = [CRH_DOMAIN_SEP, left_input, right_input].concat();
         let packed_input: Vec<BlsFr> = hash_input
             .to_field_elements()
             .expect("could not pack inputs");
 
-        // Compute the hash
+        // 计算哈希
         Ok(poseidon_iterated_hash(&packed_input))
     }
 }
 
-// Do the same thing for ZK land
+// 实现BLS12-381上的Poseidon的抗碰撞哈希功能的ZK电路gadget版本
 impl TwoToOneCRHGadget<Bls12PoseidonCrh, BlsFr> for Bls12PoseidonCrh {
     type ParametersVar = UnitVar<BlsFr>;
     type OutputVar = FpVar<BlsFr>;
 
-    // Evaluates H(left || right)
+    // 计算H(left || right)
     fn evaluate(
         _: &UnitVar<BlsFr>,
         left_input: &[UInt8<BlsFr>],
         right_input: &[UInt8<BlsFr>],
     ) -> Result<FpVar<BlsFr>, SynthesisError> {
-        // We only use this for Merkle tree hashing over BLS12-381, so just fix the input len to 32
+        // 我们只用于BLS12-381上的默克尔树哈希，所以只需将输入长度固定为32
         assert_eq!(left_input.len(), 32);
         assert_eq!(right_input.len(), 32);
 
         let mut cs = left_input.cs().or(right_input.cs());
 
-        // Concat all the inputs and pack them into field elements
+        // 连接所有输入并打包成域元素
         let hash_input: Vec<UInt8<_>> = [
             &UInt8::constant_vec(CRH_DOMAIN_SEP),
             left_input,
@@ -233,7 +236,7 @@ impl TwoToOneCRHGadget<Bls12PoseidonCrh, BlsFr> for Bls12PoseidonCrh {
             .to_constraint_field()
             .expect("could not pack inputs");
 
-        // Compute the hash
+        // 计算哈希
         poseidon_iterated_hash_gadget(&mut cs, &packed_input)
     }
 }

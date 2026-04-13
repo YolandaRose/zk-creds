@@ -5,5 +5,6 @@
 pub mod common;
 pub mod composed;
 pub mod employee_id;
+pub mod joint;
 pub mod passport;
 pub mod student_id;

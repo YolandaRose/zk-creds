@@ -7,6 +7,9 @@ mod microbenches;
 mod util;
 
 use credentials::employee_id::bench_employee_id;
+use credentials::joint::{
+    bench_joint_passport_employee, bench_joint_passport_student, bench_joint_student_employee,
+};
 use credentials::passport::bench_passport;
 use credentials::student_id::bench_student_id;
 use credentials::composed::bench_cross_credential;
@@ -16,9 +19,12 @@ use util::new_size_file as setup; // 需要设置日志证明大小到CSV
 
 criterion_group!(
     benches,
-    //bench_passport,
-    // bench_student_id,
+    bench_passport,
+    bench_student_id,
     bench_employee_id,
+    // bench_joint_student_employee,
+    // bench_joint_passport_student,
+    // bench_joint_passport_employee,
     // bench_cross_credential,
     /*
     bench_empty,

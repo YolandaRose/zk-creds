@@ -1,4 +1,4 @@
-// 定义描述属性的特征，即凭证打算提交和隐藏的数据。
+//! 定义描述属性的特征，即凭证打算提交和隐藏的数据。
 
 use crate::poseidon_utils::ComNonce;
 
@@ -13,7 +13,7 @@ use ark_std::UniformRand;
 use rand::SeedableRng;
 use rand_chacha::ChaCha12Rng;
 
-// 描述任何持有属性的对象。要求是它持有承诺随机数并定义一种方法来提交到自身。
+// 描述持有属性的对象：要求有承诺随机数
 pub trait Attrs<ConstraintF, AC>: Default
 where
     ConstraintF: PrimeField,
@@ -23,29 +23,30 @@ where
     // 序列化除了nonce和param之外的所有内容
     fn to_bytes(&self) -> Vec<u8>;
 
-    // 获取承诺方案的参数。一般来说，属性不应该持有参数。相反，这个函数应该返回对某个全局值的引用。
+    // 获取承诺方案的参数
     fn get_com_param(&self) -> &AC::Parameters;
 
-    // 获取承诺随机数
+    // 获取nonce承诺随机数用于commitment
     fn get_com_nonce(&self) -> &ComNonce;
 
     // 使用nonce和承诺参数确定性地形成对属性集的承诺
     fn commit(&self) -> AC::Output {
         let param = self.get_com_param();
 
-        // 使用给定的nonce作为种子生成适当类型的nonce
+        // 使用给定的nonce作为种子生成随机数加入承诺中
         let nonce = {
             let nonce_seed = self.get_com_nonce();
+            //生成伪随机nonce
             let mut rng = ChaCha12Rng::from_seed(nonce_seed.0);
             AC::Randomness::rand(&mut rng)
         };
 
-        // 提交序列化的属性
+        // AC：Commitment Scheme（承诺方案）
         AC::commit(param, &self.to_bytes(), &nonce).unwrap()
     }
 }
 
-// 描述ZK电路版本的`Attrs`。唯一的要求是它持有承诺随机数，定义一种方法来提交到自身，并且可以从其对应的`Attrs`对象构造。
+// 描述ZK电路版本的属性`Attrs`：要求有承诺随机数，并且可以从其对应的`Attrs`对象构造
 pub trait AttrsVar<ConstraintF, A, AC, ACG>: ToBytesGadget<ConstraintF> + Sized
 where
     ConstraintF: PrimeField,
@@ -57,16 +58,16 @@ where
     // 返回此var使用的约束系统
     fn cs(&self) -> ConstraintSystemRef<ConstraintF>;
 
-    // 见证ZK使用的秘密属性
+    // 将attrs对象转换为AttrsVar对象
     fn witness_attrs(
         cs: impl Into<Namespace<ConstraintF>>,
         attrs: &A,
     ) -> Result<Self, SynthesisError>;
 
-    // 获取承诺方案的参数。一般来说，属性不应该持有参数。相反，这个函数应该返回对某个全局值的引用。
+    // 获取承诺方案的参数
     fn get_com_param(&self) -> Result<ACG::ParametersVar, SynthesisError>;
 
-    // 获取承诺随机数。不是变量，而是原生随机数。这是自动见证的。
+    // 获取承诺随机数
     fn get_com_nonce(&self) -> &ComNonce;
 
     // 使用nonce和承诺参数确定性地形成对属性集的承诺
@@ -74,7 +75,7 @@ where
         let cs = self.cs();
         let com_param = self.get_com_param()?;
 
-        // 使用给定的nonce作为种子生成适当类型的nonce
+        // 使用给定的nonce作为种子生成随机数
         let nonce_var = {
             let nonce_seed = self.get_com_nonce();
             let mut rng = ChaCha12Rng::from_seed(nonce_seed.0);
@@ -82,12 +83,12 @@ where
             ACG::RandomnessVar::new_witness(ns!(cs, "nonce_var"), || Ok(nonce))?
         };
 
-        // 提交序列化的属性
+        // ACG: CommitmentGadget（承诺gadget）
         ACG::commit(&com_param, &self.to_bytes()?, &nonce_var)
     }
 }
 
-// 一个`Attrs`特征，它有一个标识用户的东西以及一个我们可以用于速率限制的随机种子
+//可追踪身份：增加一个标识用户的id以及一个可以用于在假名验证中限制速率的随机种子
 pub trait AccountableAttrs<ConstraintF, AC>: Attrs<ConstraintF, AC>
 where
     ConstraintF: PrimeField,
@@ -101,7 +102,7 @@ where
     fn get_seed(&self) -> Self::Seed;
 }
 
-// `AccountableAttrs`的gadget版本
+// `AccountableAttrs`的电路gadget版本
 pub trait AccountableAttrsVar<ConstraintF, A, AC, ACG>: AttrsVar<ConstraintF, A, AC, ACG>
 where
     ConstraintF: PrimeField,

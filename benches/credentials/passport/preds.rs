@@ -3,7 +3,12 @@ use crate::credentials::passport::{
     passport_info::{PersonalInfo, PersonalInfoVar},
 };
 
-use zkcreds::{pred::PredicateChecker, revealing_multishow::RevealingMultishowChecker};
+use zkcreds::{
+    pred::PredicateChecker,
+    poseidon_utils::setup_poseidon_params,
+    pseudonymous_show::PseudonymousAttrsVar,
+    revealing_multishow::RevealingMultishowChecker,
+};
 
 use ark_ff::ToConstraintField;
 use ark_r1cs_std::{
@@ -12,6 +17,8 @@ use ark_r1cs_std::{
     fields::{fp::FpVar, FieldVar},
     uint8::UInt8,
 };
+use arkworks_r1cs_gadgets::poseidon::PoseidonParametersVar;
+use arkworks_utils::Curve;
 use ark_relations::{
     ns,
     r1cs::{ConstraintSystemRef, SynthesisError},
@@ -226,8 +233,11 @@ impl PredicateChecker<Fr, PersonalInfo, PersonalInfoVar, PassportComScheme, Pass
         cs: ConstraintSystemRef<Fr>,
         attrs: &PersonalInfoVar,
     ) -> Result<(), SynthesisError> {
+        let params = setup_poseidon_params(Curve::Bls381, 3, 5);
+        let params_var = PoseidonParametersVar::new_constant(ns!(cs, "prf param"), &params)?;
         let holder_tag = FpVar::<Fr>::new_input(ns!(cs, "holder tag"), || Ok(self.holder_tag))?;
-        attrs.seed.enforce_equal(&holder_tag)
+        let token = attrs.compute_presentation_token(params_var)?;
+        token.pseudonym.enforce_equal(&holder_tag)
     }
 
     fn public_inputs(&self) -> Vec<Fr> {

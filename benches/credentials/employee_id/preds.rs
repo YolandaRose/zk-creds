@@ -1,8 +1,6 @@
 use crate::credentials::employee_id::params::{Fr, EmployeeComScheme, EmployeeComSchemeG};
 use crate::credentials::employee_id::employee_info::{EmployeeInfo, EmployeeInfoVar};
 
-use zkcreds::pred::PredicateChecker;
-
 use ark_ff::ToConstraintField;
 use ark_r1cs_std::{
     alloc::AllocVar,
@@ -12,6 +10,14 @@ use ark_r1cs_std::{
 use ark_relations::{
     ns,
     r1cs::{ConstraintSystemRef, SynthesisError},
+};
+use arkworks_r1cs_gadgets::poseidon::PoseidonParametersVar;
+use arkworks_utils::Curve;
+
+use zkcreds::{
+    poseidon_utils::setup_poseidon_params,
+    pred::PredicateChecker,
+    pseudonymous_show::PseudonymousAttrsVar,
 };
 
 // 员工卡有效期检查器
@@ -59,8 +65,11 @@ impl PredicateChecker<Fr, EmployeeInfo, EmployeeInfoVar, EmployeeComScheme, Empl
         cs: ConstraintSystemRef<Fr>,
         attrs: &EmployeeInfoVar,
     ) -> Result<(), SynthesisError> {
+        let params = setup_poseidon_params(Curve::Bls381, 3, 5);
+        let params_var = PoseidonParametersVar::new_constant(ns!(cs, "prf param"), &params)?;
         let holder_tag = FpVar::<Fr>::new_input(ns!(cs, "holder tag"), || Ok(self.holder_tag))?;
-        attrs.seed.enforce_equal(&holder_tag)
+        let token = attrs.compute_presentation_token(params_var)?;
+        token.pseudonym.enforce_equal(&holder_tag)
     }
 
     fn public_inputs(&self) -> Vec<Fr> {

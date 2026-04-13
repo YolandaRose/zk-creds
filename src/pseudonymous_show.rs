@@ -26,13 +26,13 @@ const PRF1_DOMAIN_SEP: u8 = 123;
 #[derive(Clone, Default)]
 pub struct PresentationToken<ConstraintF: PrimeField> {
     /// This is `PRFₛ(0)` where s is the seed
-    pseudonym: ConstraintF,
+    pub pseudonym: ConstraintF,
 }
 
 /// The variable version of presentation token
 #[derive(Clone)]
 pub struct PresentationTokenVar<ConstraintF: PrimeField> {
-    pseudonym: FpVar<ConstraintF>,
+    pub pseudonym: FpVar<ConstraintF>,
 }
 
 /// This trait allows a user to create a "presentation token" every time they show their

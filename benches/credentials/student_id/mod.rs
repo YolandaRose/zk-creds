@@ -1,7 +1,7 @@
 mod issuance_checker;
-mod params;
+pub(crate) mod params;
 mod preds;
-mod student_dump;
+pub(crate) mod student_dump;
 mod student_info;
 
 use crate::credentials::common::sig_verif::load_issuer_pubkey;
@@ -13,6 +13,8 @@ use crate::credentials::student_id::params::{
     ForestVerifyingKey, PredProof, PredProvingKey, PredVerifyingKey, StudentComScheme,
     StudentComSchemeG, TreeProof, TreeProvingKey, TreeVerifyingKey, H, HG, MERKLE_CRH_PARAM,
 };
+use std::time::Instant;
+
 use crate::credentials::student_id::preds::{HolderTagChecker, StudentCardExpiryChecker};
 use crate::credentials::student_id::student_dump::StudentDump;
 use crate::credentials::student_id::student_info::{StudentInfo, StudentInfoVar};
@@ -20,6 +22,8 @@ use crate::credentials::student_id::student_info::{StudentInfo, StudentInfoVar};
 use zkcreds::{
     attrs::Attrs,
     link::{link_proofs, verif_link_proof, LinkProofCtx, LinkVerifyingKey, PredPublicInputs},
+    poseidon_utils::setup_poseidon_params,
+    pseudonymous_show::PseudonymousAttrs,
     pred::{prove_birth, prove_pred, verify_birth, PredicateChecker},
     Com,
 };
@@ -28,7 +32,8 @@ use std::path::Path;
 
 use ark_bls12_381::{Bls12_381, Fr};
 use ark_ff::{BigInteger, PrimeField, UniformRand};
-use ark_std::rand::{CryptoRng, Rng};
+use ark_std::{rand::{CryptoRng, Rng}, Zero};
+use arkworks_utils::Curve;
 use criterion::Criterion;
 
 const LOG2_NUM_LEAVES: u32 = 31;
@@ -36,10 +41,11 @@ const LOG2_NUM_TREES: u32 = 8;
 const TREE_HEIGHT: u32 = LOG2_NUM_LEAVES + 1 - LOG2_NUM_TREES;
 const NUM_TREES: usize = 2usize.pow(LOG2_NUM_TREES);
 
+const POSEIDON_WIDTH: u8 = 5;
+
 /// 基准日（YYYYMMDD，须为 8 位整数）。`card_expiry` 必须 **严格大于** 本值（同一整数比较），
 /// 否则 7 位等错误写法会在数值上小于 8 位日期（例如 `2026631` < `20220101`），谓词无法通过。
 const STUDENT_CARD_TODAY: u32 = 20220101;
-const HOLDER_TAG_RAW: u64 = 424242;
 
 /// 用于演示日志的凭证承诺短标识（域元素字节前缀）
 fn cred_short_token(cred: &Com<StudentComScheme>) -> String {
@@ -146,9 +152,7 @@ fn gen_holdertag_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingKey) 
         HG,
     >(
         rng,
-        HolderTagChecker {
-            holder_tag: Fr::from(HOLDER_TAG_RAW),
-        },
+        HolderTagChecker { holder_tag: Fr::zero() },
     )
     .unwrap();
     (pk.clone(), pk.prepare_verifying_key())
@@ -201,10 +205,10 @@ fn user_req_issuance<R: Rng>(
     rng: &mut R,
     c: &mut Criterion,
     issuance_pk: &PredProvingKey,
-) -> (StudentInfo, StudentIssuanceReq) {
+) -> (StudentInfo, StudentIssuanceReq, Fr) {
     let dump = load_dump();
     let (mut my_info, _) = dump.to_student_info(rng);
-    my_info.seed = Fr::from(HOLDER_TAG_RAW);
+    let holder_tag = compute_holder_tag(&my_info);
     let attrs_com = my_info.commit();
     let hash_checker = StudentRecordHashChecker::from_holder(&my_info);
 
@@ -213,11 +217,14 @@ fn user_req_issuance<R: Rng>(
             prove_birth(rng, issuance_pk, hash_checker.clone(), my_info.clone()).unwrap();
         })
     });
+    let start = Instant::now();
     let hash_proof =
         prove_birth(rng, issuance_pk, hash_checker, my_info.clone()).unwrap();
+    let elapsed = start.elapsed();
 
     println!(
-        "[用户] 已生成「记录 blob ↔ 属性承诺」一致性证明（Groth16 birth proof），准备提交学生证签发请求。"
+        "[用户] 已生成「记录 blob ↔ 属性承诺」一致性证明（Groth16 birth proof），准备提交学生证签发请求。耗时 {} ms",
+        elapsed.as_millis()
     );
 
     let req = StudentIssuanceReq {
@@ -227,7 +234,7 @@ fn user_req_issuance<R: Rng>(
         hash_proof,
     };
 
-    (my_info, req)
+    (my_info, req, holder_tag)
 }
 
 // 发行方接收凭证请求并验证
@@ -246,6 +253,7 @@ fn issue(
         })
     });
 
+    let start = Instant::now();
     assert!(
         verify_birth(birth_vk, &req.hash_proof, &hash_checker, &req.attrs_com).unwrap(),
         "发行方：出生证明验证失败"
@@ -253,6 +261,11 @@ fn issue(
     assert!(
         sig_pubkey.verify(&req.sig, &req.record_digest),
         "发行方：RSA 签名与 record_digest 不一致"
+    );
+    let elapsed = start.elapsed();
+    println!(
+        "[发行方] 验证签发请求完成。耗时 {} ms",
+        elapsed.as_millis()
     );
 
     let tree_idx = state.next_free_tree;
@@ -283,11 +296,17 @@ fn get_expiry_checker() -> StudentCardExpiryChecker {
     }
 }
 
+fn compute_holder_tag<A>(attrs: &A) -> Fr
+where
+    A: PseudonymousAttrs<Fr, StudentComScheme>,
+{
+    let params = setup_poseidon_params(Curve::Bls381, 3, POSEIDON_WIDTH);
+    attrs.compute_presentation_token(params).unwrap().pseudonym
+}
+
 // 获取持有者标签检查器
-fn get_holdertag_checker() -> HolderTagChecker {
-    HolderTagChecker {
-        holder_tag: Fr::from(HOLDER_TAG_RAW),
-    }
+fn get_holdertag_checker(holder_tag: Fr) -> HolderTagChecker {
+    HolderTagChecker { holder_tag }
 }
 
 // 用户证明树成员资格
@@ -306,10 +325,12 @@ fn user_prove_tree_memb<R: Rng>(
                 .unwrap();
         })
     });
+    let start = Instant::now();
     let proof = auth_path
         .prove_membership(rng, tree_pk, &*MERKLE_CRH_PARAM, cred)
         .unwrap();
-    println!("[用户] {}", user_log);
+    let elapsed = start.elapsed();
+    println!("[用户] {} 耗时 {} ms", user_log, elapsed.as_millis());
     proof
 }
 
@@ -330,10 +351,12 @@ fn user_prove_forest_memb<R: Rng>(
                 .unwrap();
         })
     });
+    let start = Instant::now();
     let proof = roots
         .prove_membership(rng, forest_pk, auth_path.root(), cred)
         .unwrap();
-    println!("[用户] {}", user_log);
+    let elapsed = start.elapsed();
+    println!("[用户] {} 耗时 {} ms", user_log, elapsed.as_millis());
     proof
 }
 
@@ -358,6 +381,7 @@ where
             prove_pred(rng, pk, checker.clone(), info.clone(), auth_path).unwrap();
         })
     });
+    let start = Instant::now();
     let proof = prove_pred(rng, pk, checker.clone(), info.clone(), auth_path).unwrap();
     assert!(zkcreds::pred::verify_pred(
         &pk.prepare_verifying_key(),
@@ -367,8 +391,9 @@ where
         &auth_path.root(),
     )
     .unwrap());
+    let elapsed = start.elapsed();
 
-    println!("[用户] {}", user_log);
+    println!("[用户] {} 耗时 {} ms", user_log, elapsed.as_millis());
 
     proof
 }
@@ -410,17 +435,23 @@ fn user_link<R: Rng + CryptoRng>(
     };
 
     c.bench_function(proof_bench_name, |b| b.iter(|| link_proofs(rng, &link_ctx)));
+    let start = Instant::now();
     let link_proof = link_proofs(rng, &link_ctx);
+    let elapsed = start.elapsed();
     crate::util::record_size(proof_bench_name, &link_proof);
+    println!("[用户] {} 单次生成耗时 {} ms", proof_bench_name, elapsed.as_millis());
 
     c.bench_function(verif_bench_name, |b| {
         b.iter(|| assert!(verif_link_proof(&link_proof, &link_vk).unwrap()))
     });
 
+    let start = Instant::now();
     assert!(
         verif_link_proof(&link_proof, &link_vk).unwrap(),
         "验证方：链接证明验证失败"
     );
+    let elapsed = start.elapsed();
+    println!("[验证方] {} 单次验证耗时 {} ms", verif_bench_name, elapsed.as_millis());
     println!("\n──────── {} ────────", stage_title);
     println!(
         "[验证方] Merkle 树成员、森林成员、凭证承诺与公开输入一致性：通过（链接证明 Groth16-Sahai 验证通过）。"
@@ -450,7 +481,7 @@ pub fn bench_student_id(c: &mut Criterion) {
 
     let mut issuer_state = init_issuer(&mut rng);
 
-    let (student_info, issuance_req) = user_req_issuance(&mut rng, c, &issuance_pk);
+    let (student_info, issuance_req, holder_tag) = user_req_issuance(&mut rng, c, &issuance_pk);
     let cred = student_info.commit();
 
     let auth_path = issue(c, &mut issuer_state, &issuance_vk, &issuance_req);
@@ -471,7 +502,7 @@ pub fn bench_student_id(c: &mut Criterion) {
         "Student ID: proving holder tag",
         "持有者标签与公开值一致；承诺与 Merkle 根一致（谓词 Groth16 本地自检通过）。",
         &holdertag_pk,
-        &get_holdertag_checker(),
+        &get_holdertag_checker(holder_tag),
         &student_info,
         &auth_path,
     );
@@ -517,7 +548,7 @@ pub fn bench_student_id(c: &mut Criterion) {
 
     let mut pred_inputs = PredPublicInputs::default();
     pred_inputs.prepare_pred_checker(&expiry_vk, &get_expiry_checker());
-    pred_inputs.prepare_pred_checker(&holdertag_vk, &get_holdertag_checker());
+    pred_inputs.prepare_pred_checker(&holdertag_vk, &get_holdertag_checker(holder_tag));
     user_link(
         &mut rng,
         c,

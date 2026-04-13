@@ -1,7 +1,7 @@
 pub mod ark_sha256;
 mod issuance_checker;
-mod params;
-mod passport_dump;
+pub(crate) mod params;
+pub(crate) mod passport_dump;
 mod passport_info;
 mod preds;
 
@@ -26,6 +26,7 @@ use zkcreds::{
     attrs::Attrs,
     link::{link_proofs, verif_link_proof, LinkProofCtx, LinkVerifyingKey, PredPublicInputs},
     poseidon_utils::setup_poseidon_params,
+    pseudonymous_show::PseudonymousAttrs,
     pred::{prove_birth, prove_pred, verify_birth, PredicateChecker},
     revealing_multishow::{MultishowableAttrs, RevealingMultishowChecker},
     Com,
@@ -33,10 +34,11 @@ use zkcreds::{
 
 use std::fs::File;
 use std::path::Path;
+use std::time::Instant;
 
 use ark_bls12_381::{Bls12_381, Fr};
 use ark_ff::{BigInteger, PrimeField, UniformRand};
-use ark_std::rand::{CryptoRng, Rng};
+use ark_std::{rand::{CryptoRng, Rng}, Zero};
 use arkworks_utils::Curve;
 use criterion::Criterion;
 
@@ -50,7 +52,6 @@ const POSEIDON_WIDTH: u8 = 5;
 // 护照验证的示例参数（展示谓词）：到期日、年龄等
 const TODAY: u32 = 20220101u32;
 const TWENTY_ONE_YEARS_AGO: u32 = TODAY - 210000;
-const HOLDER_TAG_RAW: u64 = 424242;
 
 /// 用于演示日志的凭证承诺短标识（域元素字节前缀）
 fn cred_short_token(cred: &Com<PassportComScheme>) -> String {
@@ -233,9 +234,7 @@ fn gen_holdertag_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingKey) 
         HG,
     >(
         rng,
-        HolderTagChecker {
-            holder_tag: Fr::from(HOLDER_TAG_RAW),
-        },
+        HolderTagChecker { holder_tag: Fr::zero() },
     )
     .unwrap();
 
@@ -294,10 +293,10 @@ fn user_req_issuance<R: Rng>(
     rng: &mut R,
     c: &mut Criterion,
     issuance_pk: &PredProvingKey,
-) -> (PersonalInfo, IssuanceReq) {
+) -> (PersonalInfo, IssuanceReq, Fr) {
     let dump = load_dump();
     let (mut my_info, _) = dump.to_personal_info(rng);
-    my_info.seed = Fr::from(HOLDER_TAG_RAW);
+    let holder_tag = compute_holder_tag(&my_info);
     let attrs_com = my_info.commit();
 
     let hash_checker = PassportRecordHashChecker::from_holder(&my_info);
@@ -306,10 +305,13 @@ fn user_req_issuance<R: Rng>(
     c.bench_function("Passport: proving birth", |b| {
         b.iter(|| prove_birth(rng, issuance_pk, hash_checker.clone(), my_info.clone()).unwrap())
     });
+    let start = Instant::now();
     let hash_proof = prove_birth(rng, issuance_pk, hash_checker, my_info.clone()).unwrap();
+    let elapsed = start.elapsed();
 
     println!(
-        "[用户] 已生成「记录 blob ↔ 属性承诺」一致性证明（Groth16 birth proof），准备提交签发请求。"
+        "[用户] 已生成「记录 blob ↔ 属性承诺」一致性证明（Groth16 birth proof），准备提交签发请求。耗时 {} ms",
+        elapsed.as_millis()
     );
 
     // 构建颁发请求
@@ -320,7 +322,7 @@ fn user_req_issuance<R: Rng>(
         hash_proof,
     };
 
-    (my_info, req)
+    (my_info, req, holder_tag)
 }
 
 // 发行方接收颁发请求并验证
@@ -342,6 +344,7 @@ fn issue(
         })
     });
 
+    let start = Instant::now();
     assert!(
         verify_birth(birth_vk, &req.hash_proof, &hash_checker, &req.attrs_com).unwrap(),
         "发行方：出生证明验证失败"
@@ -349,6 +352,11 @@ fn issue(
     assert!(
         sig_pubkey.verify(&req.sig, &req.record_digest),
         "发行方：RSA 签名与 record_digest 不一致"
+    );
+    let elapsed = start.elapsed();
+    println!(
+        "[发行方] 验证签发请求完成。耗时 {} ms",
+        elapsed.as_millis()
     );
 
     let tree_idx = state.next_free_tree;
@@ -398,9 +406,14 @@ fn get_multishow_checker(info: &PersonalInfo) -> RevealingMultishowChecker<Fr> {
     let nonce = Fr::from(1337u32);
     let epoch = 5;
     let ctr: u16 = 1;
-    let token = info
-        .compute_presentation_token(poseidon_params.clone(), epoch, ctr, nonce)
-        .unwrap();
+    let token = zkcreds::revealing_multishow::MultishowableAttrs::compute_presentation_token(
+        info,
+        poseidon_params.clone(),
+        epoch,
+        ctr,
+        nonce,
+    )
+    .unwrap();
 
     RevealingMultishowChecker {
         token,
@@ -439,10 +452,16 @@ fn get_agemultishowexpiry_checker(info: &PersonalInfo) -> AgeMultishowExpiryChec
 }
 
 //获取持有者标签检查器
-fn get_holdertag_checker() -> HolderTagChecker {
-    HolderTagChecker {
-        holder_tag: Fr::from(HOLDER_TAG_RAW),
-    }
+fn get_holdertag_checker(holder_tag: Fr) -> HolderTagChecker {
+    HolderTagChecker { holder_tag }
+}
+
+fn compute_holder_tag<A>(attrs: &A) -> Fr
+where
+    A: PseudonymousAttrs<Fr, PassportComScheme>,
+{
+    let params = setup_poseidon_params(Curve::Bls381, 3, POSEIDON_WIDTH);
+    attrs.compute_presentation_token(params).unwrap().pseudonym
 }
 
 //用户证明树成员
@@ -461,10 +480,12 @@ fn user_prove_tree_memb<R: Rng>(
                 .unwrap()
         })
     });
+    let start = Instant::now();
     let proof = auth_path
         .prove_membership(rng, tree_pk, &*MERKLE_CRH_PARAM, cred)
         .unwrap();
-    println!("[用户] {}", user_log);
+    let elapsed = start.elapsed();
+    println!("[用户] {} 耗时 {} ms", user_log, elapsed.as_millis());
     proof
 }
 
@@ -485,10 +506,12 @@ fn user_prove_forest_memb<R: Rng>(
                 .unwrap()
         })
     });
+    let start = Instant::now();
     let proof = roots
         .prove_membership(rng, forest_pk, auth_path.root(), cred)
         .unwrap();
-    println!("[用户] {}", user_log);
+    let elapsed = start.elapsed();
+    println!("[用户] {} 耗时 {} ms", user_log, elapsed.as_millis());
     proof
 }
 
@@ -514,6 +537,7 @@ where
             prove_pred(rng, pk, checker.clone(), info.clone(), auth_path).unwrap();
         })
     });
+    let start = Instant::now();
     let proof = prove_pred(rng, pk, checker.clone(), info.clone(), auth_path).unwrap();
 
     // 断言证明验证
@@ -525,8 +549,9 @@ where
         &auth_path.root(),
     )
     .unwrap());
+    let elapsed = start.elapsed();
 
-    println!("[用户] {}", user_log);
+    println!("[用户] {} 耗时 {} ms", user_log, elapsed.as_millis());
 
     proof
 }
@@ -568,17 +593,23 @@ fn user_link<R: Rng + CryptoRng>(
     };
 
     c.bench_function(proof_bench_name, |b| b.iter(|| link_proofs(rng, &link_ctx)));
+    let start = Instant::now();
     let link_proof = link_proofs(rng, &link_ctx);
+    let elapsed = start.elapsed();
     crate::util::record_size(proof_bench_name, &link_proof);
+    println!("[用户] {} 单次生成耗时 {} ms", proof_bench_name, elapsed.as_millis());
 
     c.bench_function(verif_bench_name, |b| {
         b.iter(|| assert!(verif_link_proof(&link_proof, &link_vk).unwrap()))
     });
 
+    let start = Instant::now();
     assert!(
         verif_link_proof(&link_proof, &link_vk).unwrap(),
         "验证方：链接证明验证失败"
     );
+    let elapsed = start.elapsed();
+    println!("[验证方] {} 单次验证耗时 {} ms", verif_bench_name, elapsed.as_millis());
     println!("\n──────── {} ────────", stage_title);
     println!(
         "[验证方] Merkle 树成员、森林成员、凭证承诺与公开输入一致性：通过（链接证明 Groth16-Sahai 验证通过）。"
@@ -615,7 +646,7 @@ pub fn bench_passport(c: &mut Criterion) {
     let mut issuer_state = init_issuer(&mut rng);
 
     // 用户dump护照并发出凭证请求
-    let (personal_info, issuance_req) = user_req_issuance(&mut rng, c, &issuance_pk);
+    let (personal_info, issuance_req, holder_tag) = user_req_issuance(&mut rng, c, &issuance_pk);
     let cred = personal_info.commit();
 
     // 发行方验证护照并颁发凭证
@@ -677,7 +708,7 @@ pub fn bench_passport(c: &mut Criterion) {
         "Passport: proving holder tag",
         "持有者标签与公开值一致；承诺与 Merkle 根一致（谓词 Groth16 本地自检通过）。",
         &holdertag_pk,
-        &get_holdertag_checker(),
+        &get_holdertag_checker(holder_tag),
         &personal_info,
         &auth_path,
     );
@@ -796,7 +827,7 @@ pub fn bench_passport(c: &mut Criterion) {
     let mut pred_inputs = PredPublicInputs::default();
     pred_inputs.prepare_pred_checker(&ageexpiry_vk, &get_ageexpiry_checker());
     pred_inputs.prepare_pred_checker(&multishow_vk, &get_multishow_checker(&personal_info));
-    pred_inputs.prepare_pred_checker(&holdertag_vk, &get_holdertag_checker());
+    pred_inputs.prepare_pred_checker(&holdertag_vk, &get_holdertag_checker(holder_tag));
     user_link(
         &mut rng,
         c,
