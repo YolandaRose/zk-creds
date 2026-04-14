@@ -1,5 +1,4 @@
-//! Defines functions for proving and verifying _birth predicates_, i.e., the predicates that one
-//! must prove in order to convince the issuer to issue the credential in question.
+//! 定义用于证明和验证出生谓词的函数，即必须证明的谓词，以便说服颁发者签发相关凭据
 
 use crate::{
     attrs::{Attrs, AttrsVar},
@@ -21,6 +20,7 @@ use ark_relations::{
 use ark_std::rand::Rng;
 use linkg16::groth16;
 
+// 生成出生谓词的CRS
 pub fn gen_birth_crs<R, C, E, A, AV, AC, ACG>(
     rng: &mut R,
     birth_checker: C,
@@ -47,6 +47,7 @@ where
     })
 }
 
+// 证明出生谓词
 pub fn prove_birth<R, C, E, A, AV, AC, ACG>(
     rng: &mut R,
     pk: &BirthProvingKey<E, A, AV, AC, ACG>,
@@ -75,6 +76,7 @@ where
     })
 }
 
+// 验证出生谓词
 pub fn verify_birth<C, E, A, AV, AC, ACG>(
     vk: &BirthVerifyingKey<E, A, AV, AC, ACG>,
     proof: &BirthProof<E, A, AV, AC, ACG>,
@@ -96,6 +98,7 @@ where
     groth16::verify_proof(&vk.vk, &proof.proof, &all_inputs)
 }
 
+// 准备谓词输入
 pub fn prepare_pred_inputs<R, C, E, A, AV, AC, ACG>(
     vk: &BirthVerifyingKey<E, A, AV, AC, ACG>,
     birth_checker: &C,
@@ -117,9 +120,8 @@ where
     })
 }
 
-/// Internal object for proving birth predicates. This needs to implement `ConstraintSynthesizer`
-/// in order to pass to the Groth16 proving functions. `AC` is the attribute commitment scheme,
-/// `MC` is the merkle root commitment scheme.
+/// 用于证明出生谓词的内部对象。这需要实现 `ConstraintSynthesizer`
+/// 以便传递给Groth16证明函数。`AC` 是属性承诺方案，`MC` 是Merkle根承诺方案。
 pub(crate) struct BirthProver<ConstraintF, C, A, AV, AC, ACG>
 where
     ConstraintF: PrimeField,
@@ -150,15 +152,15 @@ where
         self,
         cs: ConstraintSystemRef<ConstraintF>,
     ) -> Result<(), SynthesisError> {
-        // Witness the commitment
+        // 见证承诺
         let attrs_com_var =
             ACG::OutputVar::new_input(ns!(cs, "attrs com var"), || Ok(self.attrs.commit()))?;
 
-        // Check that the attrs commitment is consistent
+        // 检查属性承诺的一致性
         let attrs_var = AV::witness_attrs(ns!(cs, "attrs var"), &self.attrs)?;
         attrs_com_var.enforce_equal(&attrs_var.commit()?)?;
 
-        // Finally assert the birth predicate is true
+        // 最后断言出生谓词为真
         self.birth_checker.pred(cs, &attrs_var)
     }
 }
@@ -176,27 +178,25 @@ mod test {
     fn test_birth() {
         let mut rng = ark_std::test_rng();
 
-        // We choose that anyone born in 2001 or earlier satisfies our predicate
+        // 我们选择任何人出生在2001年或更早都满足我们的谓词
         let birth_checker = AgeChecker {
             threshold_birth_year: Fr::from(2001u16),
         };
 
-        // Generate the birth circuit's CRS
+        // 生成出生谓词的CRS
         let pk = gen_birth_crs::<_, _, E, _, _, TestComSchemePedersen, TestComSchemePedersenG>(
             &mut rng,
             birth_checker.clone(),
         )
         .unwrap();
 
-        // First name is UTF-8 encoded, padded at the end with null bytes
+        // 第一个名字是UTF-8编码的，末尾填充空字节
         let person = NameAndBirthYear::new(&mut rng, b"Andrew", 1992);
 
-        // Prove the predicate
+        // 证明谓词
         let proof = prove_birth(&mut rng, &pk, birth_checker.clone(), person.clone()).unwrap();
 
-        // Ordinarily we wouldn't be able to verify a predicate proof, since it requires knowledge
-        // of the attribute commitment. But this is testing mode and we know this value, so let's
-        // make sure the predicate proof verifies.
+        // 通常我们无法验证谓词证明，因为它需要知道属性承诺。但这是测试模式，我们知道这个值，所以让我们确保谓词证明可以验证。
         let person_com = Attrs::<_, TestComSchemePedersen>::commit(&person);
         let vk = pk.prepare_verifying_key();
         assert!(verify_birth(&vk, &proof, &birth_checker, &person_com).unwrap());

@@ -1,4 +1,4 @@
-//! Defines a trait that allows service providers to implement pseudonyms on their services
+//! 定义了一个特性，允许服务提供者在其服务上实现伪匿名
 
 use crate::{
     attrs::{AccountableAttrs, AccountableAttrsVar},
@@ -18,32 +18,31 @@ use ark_relations::{
 use arkworks_native_gadgets::poseidon::{FieldHasher, Poseidon, PoseidonParameters};
 use arkworks_r1cs_gadgets::poseidon::{FieldHasherGadget, PoseidonGadget, PoseidonParametersVar};
 
-// Domain separators for all our uses of Poseidon
+// 我们所有使用Poseidon的域分隔符
 const PRF1_DOMAIN_SEP: u8 = 123;
 
-/// A pseudorandom pair of field elements. If there are ever two tokens with the same `hidden_ctr`,
-/// they can be combined to derive the (hash of the) user's ID.
+/// 一个伪随机字段元素对。如果两个令牌的 `hidden_ctr` 相同，它们可以组合起来推导出用户的 ID 的哈希值
 #[derive(Clone, Default)]
 pub struct PresentationToken<ConstraintF: PrimeField> {
-    /// This is `PRFₛ(0)` where s is the seed
+    /// 这是 `PRFₛ(0)`，其中 s 是种子
     pub pseudonym: ConstraintF,
 }
 
-/// The variable version of presentation token
+/// 可变版本的 presentation token
 #[derive(Clone)]
 pub struct PresentationTokenVar<ConstraintF: PrimeField> {
     pub pseudonym: FpVar<ConstraintF>,
 }
 
-/// This trait allows a user to create a "presentation token" every time they show their
-/// credential. This token is constant, and uniquely identifies this credential.
+/// 这个特性允许用户每次展示他们的凭据时创建一个 "presentation token"。
+/// 这个令牌是常量，并且唯一地标识这个凭据。
 pub trait PseudonymousAttrs<ConstraintF, AC>
 where
     ConstraintF: PrimeField,
     AC: CommitmentScheme,
     AC::Output: ToConstraintField<ConstraintF>,
 {
-    /// Computes the presentation token from the given accountable attribute
+    /// 从给定的可问责属性计算 presentation token
     fn compute_presentation_token(
         &self,
         params: PoseidonParameters<ConstraintF>,
@@ -57,7 +56,7 @@ where
     AC: CommitmentScheme,
     AC::Output: ToConstraintField<ConstraintF>,
 {
-    /// Computes the presentation token from the given accountable attribute
+    /// 从给定的可问责属性计算 presentation token
     fn compute_presentation_token(
         &self,
         params: PoseidonParameters<ConstraintF>,
@@ -80,7 +79,7 @@ where
     }
 }
 
-/// Implements `compute_presentation_token` for all AccountableAttrsVar
+/// 实现 `compute_presentation_token` 对于所有 AccountableAttrsVar
 pub trait PseudonymousAttrsVar<ConstraintF, A, AC, ACG>
 where
     ConstraintF: PrimeField,
@@ -89,14 +88,14 @@ where
     AC::Output: ToConstraintField<ConstraintF>,
     ACG: CommitmentGadget<AC, ConstraintF>,
 {
-    /// Computes the presentation token from the given accountable attribute
+    /// 从给定的可问责属性计算 presentation token
     fn compute_presentation_token(
         &self,
         params: PoseidonParametersVar<ConstraintF>,
     ) -> Result<PresentationTokenVar<ConstraintF>, SynthesisError>;
 }
 
-/// Implements `compute_presentation_token` for all AccountableAttrsVar
+/// 实现 `compute_presentation_token` 对于所有 AccountableAttrsVar
 impl<ConstraintF, A, AV, AC, ACG> PseudonymousAttrsVar<ConstraintF, A, AC, ACG> for AV
 where
     ConstraintF: PrimeField,
@@ -106,7 +105,7 @@ where
     AC::Output: ToConstraintField<ConstraintF>,
     ACG: CommitmentGadget<AC, ConstraintF>,
 {
-    /// Computes the presentation token from the given accountable attribute
+    /// 从给定的可问责属性计算 presentation token
     fn compute_presentation_token(
         &self,
         params: PoseidonParametersVar<ConstraintF>,
@@ -130,18 +129,17 @@ where
     }
 }
 
-/// Proves that `token` is the result of a PRF computation using the verifier-provided nonce and
-/// the attribute's ID and random seed
+/// 证明 `token` 是使用验证者提供的 nonce 和属性 ID 以及随机种子进行 PRF 计算的结果
 #[derive(Clone, Default)]
 pub struct PseudonymousShowChecker<ConstraintF>
 where
     ConstraintF: PrimeField,
 {
-    // Public inputs //
-    /// The psuedorandom values associated with all presentations of this cred
+    // 公共输入 //
+    /// 与所有展示相关的伪随机值
     pub token: PresentationToken<ConstraintF>,
 
-    // Constants //
+    // 常量 //
     /// Poseidon parameters
     pub params: PoseidonParameters<ConstraintF>,
 }
@@ -156,27 +154,26 @@ where
     ACG: CommitmentGadget<AC, ConstraintF>,
     AC::Output: ToConstraintField<ConstraintF>,
 {
-    /// Returns whether or not the predicate was satisfied
+    /// 返回谓词是否满足
     fn pred(self, cs: ConstraintSystemRef<ConstraintF>, attrs: &AV) -> Result<(), SynthesisError> {
-        // Witness the Poseidon params
+        // 见证波塞冬参数
         let params = PoseidonParametersVar::new_constant(ns!(cs, "prf param"), &self.params)?;
 
-        // Witness public input
+        // 见证公共输入
         let pseudonym =
             FpVar::<ConstraintF>::new_input(ns!(cs, "pseudonym"), || Ok(self.token.pseudonym))?;
 
-        // Compute the presentation token
+        // 计算 presentation token
         let computed_token = attrs.compute_presentation_token(params)?;
 
-        // Assert the equality of the computed values
+        // 断言计算值的相等性
         computed_token.pseudonym.enforce_equal(&pseudonym)?;
 
-        // All done
+        // 完成
         Ok(())
     }
 
-    /// This outputs the field elements corresponding to the public inputs of this predicate.
-    /// This DOES NOT include `attrs`.
+    /// 输出与谓词公共输入对应的字段元素。这不包括 `attrs`。
     fn public_inputs(&self) -> Vec<ConstraintF> {
         vec![self.token.pseudonym]
     }
@@ -204,7 +201,7 @@ mod test {
     fn test_pseudonymous_show() {
         let mut rng = ark_std::test_rng();
 
-        // Set up the public parameters
+        // 设置公共参数
         let params = setup_poseidon_params(Curve::Bls381, 3, POSEIDON_WIDTH);
         let placeholder_checker = PseudonymousShowChecker {
             params: params.clone(),
@@ -225,24 +222,24 @@ mod test {
 
         let person = NameAndBirthYear::new(&mut rng, b"Andrew", 1992);
 
-        // User computes a pseudonym
+        // 用户计算一个伪匿名
         let token = PseudonymousAttrs::<_, TestComSchemePedersen>::compute_presentation_token(
             &person,
             params.clone(),
         )
         .unwrap();
 
-        // User constructs a checker for their predicate
+        // 用户构造一个谓词的检查器
         let users_checker = PseudonymousShowChecker {
             token: token.clone(),
             params: params.clone(),
         };
 
-        // Prove the predicate
+        // 证明谓词
         let proof = prove_birth(&mut rng, &pk, users_checker, person.clone()).unwrap();
 
-        // Now verify the predicate
-        // Make the checker with only the public data
+        // 验证谓词
+        // 只用公共数据制作检查器
         let verifiers_checker = PseudonymousShowChecker { token, params };
         let person_com = Attrs::<_, TestComSchemePedersen>::commit(&person);
         let vk = pk.prepare_verifying_key();
