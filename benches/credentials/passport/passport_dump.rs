@@ -32,9 +32,8 @@ mod serde_bytes_base64 {
         D: Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        base64::decode(s.as_bytes()).map_err(|e| {
-            serde::de::Error::custom(format!("base64 decode: {:?}", e))
-        })
+        base64::decode(s.as_bytes())
+            .map_err(|e| serde::de::Error::custom(format!("base64 decode: {:?}", e)))
     }
 }
 

@@ -1,9 +1,9 @@
-use crate::credentials::passport::ark_sha256::Sha256Gadget;
-use crate::credentials::employee_id::params::{
-    Fr, PredProof, EmployeeComScheme, EmployeeComSchemeG, DEPARTMENT_LEN, NAME_LEN, RECORD_BLOB_LEN,
-    COMPANY_LEN, EMPLOYEE_NO_LEN,
-};
 use crate::credentials::employee_id::employee_info::{EmployeeInfo, EmployeeInfoVar};
+use crate::credentials::employee_id::params::{
+    EmployeeComScheme, EmployeeComSchemeG, Fr, PredProof, COMPANY_LEN, DEPARTMENT_LEN,
+    EMPLOYEE_NO_LEN, NAME_LEN, RECORD_BLOB_LEN,
+};
+use crate::credentials::passport::ark_sha256::Sha256Gadget;
 
 use zkcreds::{pred::PredicateChecker, Com};
 
@@ -114,4 +114,3 @@ impl PredicateChecker<Fr, EmployeeInfo, EmployeeInfoVar, EmployeeComScheme, Empl
         self.record_digest.to_field_elements().unwrap()
     }
 }
-

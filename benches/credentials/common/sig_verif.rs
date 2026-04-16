@@ -24,9 +24,7 @@ pub fn load_issuer_pubkey() -> IssuerPubkey {
         pem
     } else if let Ok(path) = env::var("ZKCREDS_ISSUER_PUBKEY_PATH") {
         fs::read_to_string(&path).unwrap_or_else(|e| {
-            panic!(
-                "ZKCREDS_ISSUER_PUBKEY_PATH={path:?}: could not read issuer public key PEM: {e}"
-            )
+            panic!("ZKCREDS_ISSUER_PUBKEY_PATH={path:?}: could not read issuer public key PEM: {e}")
         })
     } else {
         let user_path = Path::new(USER_ISSUER_PUBKEY_PATH);

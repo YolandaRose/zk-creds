@@ -15,8 +15,7 @@ use arkworks_r1cs_gadgets::poseidon::PoseidonParametersVar;
 use arkworks_utils::Curve;
 
 use zkcreds::{
-    poseidon_utils::setup_poseidon_params,
-    pred::PredicateChecker,
+    poseidon_utils::setup_poseidon_params, pred::PredicateChecker,
     pseudonymous_show::PseudonymousAttrsVar,
 };
 
@@ -36,10 +35,9 @@ impl PredicateChecker<Fr, StudentInfo, StudentInfoVar, StudentComScheme, Student
         attrs: &StudentInfoVar,
     ) -> Result<(), SynthesisError> {
         // 断言学生卡有效期 > threshold_expiry
-        let threshold =
-            FpVar::<Fr>::new_input(ns!(cs, "student card expiry threshold"), || {
-                Ok(self.threshold_expiry)
-            })?;
+        let threshold = FpVar::<Fr>::new_input(ns!(cs, "student card expiry threshold"), || {
+            Ok(self.threshold_expiry)
+        })?;
         attrs
             .card_expiry
             .enforce_cmp(&threshold, core::cmp::Ordering::Greater, false)

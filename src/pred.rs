@@ -1,4 +1,4 @@
-//! Defines traits for creating and proving predicates over attributes
+//! 定义用于创建和证明属性谓词的特征
 
 use crate::{
     attrs::{Attrs, AttrsVar},
@@ -22,7 +22,7 @@ use ark_relations::{
 use ark_std::rand::Rng;
 use linkg16::groth16;
 
-/// Describes any predicate that someone might want to prove over an `Attrs` object.
+// 描述任何人在 `Attrs` 对象上想要证明的谓词
 pub trait PredicateChecker<ConstraintF, A, AV, AC, ACG>
 where
     ConstraintF: PrimeField,
@@ -32,14 +32,14 @@ where
     ACG: CommitmentGadget<AC, ConstraintF>,
     AC::Output: ToConstraintField<ConstraintF>,
 {
-    /// Enforces constraints on the given attributes
+    // 对给定的属性施加约束
     fn pred(self, cs: ConstraintSystemRef<ConstraintF>, attrs: &AV) -> Result<(), SynthesisError>;
 
-    /// This outputs the field elements corresponding to the public inputs of this predicate. This
-    /// DOES NOT include `attrs`.
+    // 输出与谓词公共输入对应的字段元素。这不包括 `attrs`。
     fn public_inputs(&self) -> Vec<ConstraintF>;
 }
 
+// 生成谓词的CRS
 pub fn gen_pred_crs<R, P, E, A, AV, AC, ACG, H, HG>(
     rng: &mut R,
     checker: P,
@@ -70,7 +70,7 @@ where
     })
 }
 
-/// Proves the given predicate over the attributes
+// 证明给定谓词对属性的证明
 pub fn prove_pred<R, P, E, A, AV, AC, ACG, H, HG>(
     rng: &mut R,
     pk: &PredProvingKey<E, A, AV, AC, ACG, H, HG>,
@@ -105,8 +105,7 @@ where
     })
 }
 
-/// Proves the given birth predicate over the given attribute. Same as `prove_pred` except we don't
-/// care about the auth path
+// 证明给定出生谓词对给定属性的证明
 pub fn prove_birth<R, P, E, A, AV, AC, ACG, H, HG>(
     rng: &mut R,
     pk: &PredProvingKey<E, A, AV, AC, ACG, H, HG>,
@@ -126,13 +125,12 @@ where
     H::Output: ToConstraintField<E::Fr>,
     HG: TwoToOneCRHGadget<H, E::Fr>,
 {
-    // It sufficient to make a default com tree path without specifying length, since only the
-    // placeholder root value is used
+    // 制作一个默认的com树路径，不需要指定长度，因为只使用占位符根值
     let auth_path = ComTreePath::default();
     prove_pred(rng, pk, checker, attrs, &auth_path)
 }
 
-/// Verifies a predicate proof. For testing purposes only
+// 验证谓词证明
 #[doc(hidden)]
 pub fn verify_pred<P, E, A, AV, AC, ACG, H, HG>(
     vk: &PredVerifyingKey<E, A, AV, AC, ACG, H, HG>,
@@ -160,8 +158,7 @@ where
     groth16::verify_proof(&vk.vk, &proof.proof, &all_inputs)
 }
 
-// Same as a predicate proof but we don't care about the merkle root
-/// Verifies a birth predicate proof
+// 验证出生谓词证明
 pub fn verify_birth<P, E, A, AV, AC, ACG, H, HG>(
     vk: &PredVerifyingKey<E, A, AV, AC, ACG, H, HG>,
     proof: &PredProof<E, A, AV, AC, ACG, H, HG>,
@@ -184,6 +181,7 @@ where
     verify_pred(vk, proof, checker, attrs_com, &merkle_root)
 }
 
+// 准备谓词输入
 pub fn prepare_pred_inputs<R, P, E, A, AV, AC, ACG, H, HG>(
     vk: &PredVerifyingKey<E, A, AV, AC, ACG, H, HG>,
     checker: &P,
@@ -208,9 +206,8 @@ where
     })
 }
 
-/// Internal object for proving predicates. This needs to implement `ConstraintSynthesizer` in
-/// order to pass to the Groth16 proving functions. `AC` is the attribute commitment scheme, `MC`
-/// is the merkle root commitment scheme.
+// 用于证明谓词的内部对象
+// 这需要实现 `ConstraintSynthesizer` 以便传递给Groth16证明函数。`AC` 是属性承诺方案，`MC` 是Merkle根承诺方案。
 pub(crate) struct PredicateProver<ConstraintF, P, A, AV, AC, ACG, H, HG>
 where
     ConstraintF: PrimeField,
@@ -248,17 +245,16 @@ where
         self,
         cs: ConstraintSystemRef<ConstraintF>,
     ) -> Result<(), SynthesisError> {
-        // Witness the public variables. In ALL zkcreds proofs, it's the commitment to the
-        // attributes and the merkle root
+        // 见证公共变量：在所有的zkcreds证明中，它是属性集的承诺和默克尔根
         let attrs_com_var =
             ACG::OutputVar::new_input(ns!(cs, "attrs com var"), || Ok(self.attrs.commit()))?;
         let _root_var = HG::OutputVar::new_input(ns!(cs, "root var"), || Ok(self.merkle_root))?;
 
-        // Check that the attrs commitment is consistent
+        // 检查属性承诺的一致性
         let attrs_var = AV::witness_attrs(ns!(cs, "attrs var"), &self.attrs)?;
         attrs_com_var.enforce_equal(&attrs_var.commit()?)?;
 
-        // Finally assert the predicate is true
+        // 最后断言谓词为真
         self.checker.pred(cs, &attrs_var)
     }
 }
@@ -273,17 +269,17 @@ pub(crate) mod test {
 
     use ark_bls12_381::{Bls12_381 as E, Fr};
 
-    /// Tests a predicate that returns true iff the given `NameAndBirthYear` is at least 21
+    // 测试一个谓词，当且仅当给定的 `NameAndBirthYear` 至少为21时返回真
     #[test]
     fn test_age() {
         let mut rng = ark_std::test_rng();
 
-        // We choose that anyone born in 2001 or earlier satisfies our predicate
+        // 选择任何人出生在2001年或更早都满足的谓词
         let checker = AgeChecker {
             threshold_birth_year: Fr::from(2001u16),
         };
 
-        // Generate the predicate circuit's CRS
+        // 生成谓词电路的CRS
         let pk = gen_pred_crs::<
             _,
             _,
@@ -297,19 +293,16 @@ pub(crate) mod test {
         >(&mut rng, checker.clone())
         .unwrap();
 
-        // First name is UTF-8 encoded, padded at the end with null bytes
+        // 第一个名字是UTF-8编码的，末尾填充空字节
         let person = NameAndBirthYear::new(&mut rng, b"Andrew", 1992);
-        // Make a placeholder auth path. This value is only relevant when we start linking
-        // proofs. Together. Ignore for this test.
+        // 制作一个占位符授权路径，这个值只在开始链接证明时相关
         let auth_path = ComTreePath::default();
         let merkle_root = auth_path.path.root;
 
-        // Prove the predicate
+        // 证明谓词
         let proof = prove_pred(&mut rng, &pk, checker.clone(), person.clone(), &auth_path).unwrap();
 
-        // Ordinarily we wouldn't be able to verify a predicate proof, since it requires knowledge
-        // of the attribute commitment. But this is testing mode and we know this value, so let's
-        // make sure the predicate proof verifies.
+        // 通常我们无法验证谓词证明，因为它需要知道属性承诺。但这是测试模式，我们知道这个值，所以让我们确保谓词证明可以验证。
         let person_com = Attrs::<_, TestComSchemePedersen>::commit(&person);
         let vk = pk.prepare_verifying_key();
         assert!(verify_pred(&vk, &proof, &checker, &person_com, &merkle_root).unwrap());

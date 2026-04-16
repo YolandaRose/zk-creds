@@ -24,9 +24,9 @@ pub(crate) type ComForestRoots = zkcreds::com_forest::ComForestRoots<Fr, H>;
 // 为了让 `joint` 不依赖其它 bench 模块的私有 `params`，这里直接复制固定布局长度。
 // student: name(32) | school(32) | college(32) | student_no(16) | enrollment_year(4) | card_expiry(4)
 pub(crate) const STUDENT_RECORD_LEN: usize = 32 + 32 + 32 + 16 + 4 + 4; // 120
-// employee: name(32) | company(32) | department(32) | employee_no(16) | hire_year(4) | card_expiry(4)
+                                                                        // employee: name(32) | company(32) | department(32) | employee_no(16) | hire_year(4) | card_expiry(4)
 pub(crate) const EMPLOYEE_RECORD_LEN: usize = 32 + 32 + 32 + 16 + 4 + 4; // 120
-// passport: nationality(3) | name(39) | dob(4) | passport_expiry(4) | biometrics_raw(128)
+                                                                         // passport: nationality(3) | name(39) | dob(4) | passport_expiry(4) | biometrics_raw(128)
 pub(crate) const PASSPORT_RECORD_LEN: usize = 3 + 39 + 4 + 4 + 128; // 178
 
 pub(crate) const SE_JOINT_LEN: usize = STUDENT_RECORD_LEN + EMPLOYEE_RECORD_LEN;

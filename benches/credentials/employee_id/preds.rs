@@ -1,5 +1,5 @@
-use crate::credentials::employee_id::params::{Fr, EmployeeComScheme, EmployeeComSchemeG};
 use crate::credentials::employee_id::employee_info::{EmployeeInfo, EmployeeInfoVar};
+use crate::credentials::employee_id::params::{EmployeeComScheme, EmployeeComSchemeG, Fr};
 
 use ark_ff::ToConstraintField;
 use ark_r1cs_std::{
@@ -15,8 +15,7 @@ use arkworks_r1cs_gadgets::poseidon::PoseidonParametersVar;
 use arkworks_utils::Curve;
 
 use zkcreds::{
-    poseidon_utils::setup_poseidon_params,
-    pred::PredicateChecker,
+    poseidon_utils::setup_poseidon_params, pred::PredicateChecker,
     pseudonymous_show::PseudonymousAttrsVar,
 };
 
@@ -36,10 +35,9 @@ impl PredicateChecker<Fr, EmployeeInfo, EmployeeInfoVar, EmployeeComScheme, Empl
         attrs: &EmployeeInfoVar,
     ) -> Result<(), SynthesisError> {
         // 断言员工卡有效期 > threshold_expiry
-        let threshold =
-            FpVar::<Fr>::new_input(ns!(cs, "employee card expiry threshold"), || {
-                Ok(self.threshold_expiry)
-            })?;
+        let threshold = FpVar::<Fr>::new_input(ns!(cs, "employee card expiry threshold"), || {
+            Ok(self.threshold_expiry)
+        })?;
         attrs
             .card_expiry
             .enforce_cmp(&threshold, core::cmp::Ordering::Greater, false)
@@ -76,4 +74,3 @@ impl PredicateChecker<Fr, EmployeeInfo, EmployeeInfoVar, EmployeeComScheme, Empl
         vec![self.holder_tag]
     }
 }
-

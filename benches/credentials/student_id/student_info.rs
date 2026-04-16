@@ -1,6 +1,6 @@
 use crate::credentials::student_id::params::{
-    COLLEGE_LEN, NAME_LEN, RECORD_BLOB_LEN, SCHOOL_LEN, STUDENT_COM_PARAM, STUDENT_NO_LEN,
-    StudentComScheme, StudentComSchemeG,
+    StudentComScheme, StudentComSchemeG, COLLEGE_LEN, NAME_LEN, RECORD_BLOB_LEN, SCHOOL_LEN,
+    STUDENT_COM_PARAM, STUDENT_NO_LEN,
 };
 
 use zkcreds::{
@@ -11,11 +11,7 @@ use zkcreds::{
 
 use ark_ff::{to_bytes, UniformRand};
 use ark_r1cs_std::{
-    alloc::AllocVar,
-    bits::ToBytesGadget,
-    fields::fp::FpVar,
-    uint8::UInt8,
-    R1CSVar,
+    alloc::AllocVar, bits::ToBytesGadget, fields::fp::FpVar, uint8::UInt8, R1CSVar,
 };
 use ark_relations::{
     ns,
@@ -192,13 +188,11 @@ impl AttrsVar<Fr, StudentInfo, StudentComScheme, StudentComSchemeG> for StudentI
         let college = Bytestring::new_witness(ns!(cs, "college"), || Ok(attrs.college.to_vec()))?;
         let student_no =
             Bytestring::new_witness(ns!(cs, "student_no"), || Ok(attrs.student_no.to_vec()))?;
-        let enrollment_year =
-            FpVar::<Fr>::new_witness(ns!(cs, "enrollment_year"), || {
-                Ok(Fr::from(attrs.enrollment_year))
-            })?;
-        let card_expiry = FpVar::<Fr>::new_witness(ns!(cs, "card_expiry"), || {
-            Ok(Fr::from(attrs.card_expiry))
+        let enrollment_year = FpVar::<Fr>::new_witness(ns!(cs, "enrollment_year"), || {
+            Ok(Fr::from(attrs.enrollment_year))
         })?;
+        let card_expiry =
+            FpVar::<Fr>::new_witness(ns!(cs, "card_expiry"), || Ok(Fr::from(attrs.card_expiry)))?;
         Ok(StudentInfoVar {
             nonce,
             seed,

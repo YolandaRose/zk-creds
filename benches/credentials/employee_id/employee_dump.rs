@@ -1,9 +1,9 @@
-﻿//! JSON input for student-card benchmarks (`employee_card.json`).
+//! JSON input for student-card benchmarks (`employee_card.json`).
 
-use crate::credentials::employee_id::params::{
-    DEPARTMENT_LEN, NAME_LEN, RECORD_BLOB_LEN, COMPANY_LEN, EMPLOYEE_NO_LEN,
-};
 use crate::credentials::employee_id::employee_info::EmployeeInfo;
+use crate::credentials::employee_id::params::{
+    COMPANY_LEN, DEPARTMENT_LEN, EMPLOYEE_NO_LEN, NAME_LEN, RECORD_BLOB_LEN,
+};
 
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -30,9 +30,8 @@ mod serde_bytes_base64 {
         D: Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        base64::decode(s.as_bytes()).map_err(|e| {
-            serde::de::Error::custom(format!("base64 decode sig: {:?}", e))
-        })
+        base64::decode(s.as_bytes())
+            .map_err(|e| serde::de::Error::custom(format!("base64 decode sig: {:?}", e)))
     }
 }
 
@@ -75,4 +74,3 @@ impl EmployeeDump {
         (info, blob)
     }
 }
-

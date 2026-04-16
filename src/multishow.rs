@@ -23,27 +23,27 @@ use arkworks_r1cs_gadgets::poseidon::{FieldHasherGadget, PoseidonGadget, Poseido
 // 我们所有使用Poseidon的域分隔符
 const PRF1_DOMAIN_SEP: u8 = 123;
 
-/// 一个伪随机字段元素对。如果两个令牌的 `hidden_ctr` 相同，它们可以组合起来推导出用户的 ID 的哈希值
+// 一个伪随机字段元素对。如果两个令牌的 `hidden_ctr` 相同，它们可以组合起来推导出用户的 ID 的哈希值
 #[derive(Clone, Default)]
 pub struct PresentationToken<ConstraintF: PrimeField> {
-    /// 这是 `PRFₛ(epoch || ctr)`，其中 s 是种子
+    // 这是 `PRFₛ(epoch || ctr)`，其中 s 是种子
     hidden_ctr: ConstraintF,
 }
 
-/// 可变版本的 presentation token
+// 可变版本的 presentation token
 #[derive(Clone)]
 pub struct PresentationTokenVar<ConstraintF: PrimeField> {
     hidden_ctr: FpVar<ConstraintF>,
 }
 
-/// 这个特性允许用户每次展示他们的凭据时创建一个 "presentation token"。如果验证者要求 `ctr` 有界，则可以用于速率限制。
+// 这个特性允许用户每次展示他们的凭据时创建一个 "presentation token"。如果验证者要求 `ctr` 有界，则可以用于速率限制。
 pub trait MultishowableAttrs<ConstraintF, AC>
 where
     ConstraintF: PrimeField,
     AC: CommitmentScheme,
     AC::Output: ToConstraintField<ConstraintF>,
 {
-    /// 从给定的可问责属性计算 presentation token
+    // 从给定的可问责属性计算 presentation token
     fn compute_presentation_token(
         &self,
         params: PoseidonParameters<ConstraintF>,
@@ -59,7 +59,7 @@ where
     AC: CommitmentScheme,
     AC::Output: ToConstraintField<ConstraintF>,
 {
-    /// 从给定的可问责属性计算 presentation token
+    // 从给定的可问责属性计算 presentation token
     fn compute_presentation_token(
         &self,
         params: PoseidonParameters<ConstraintF>,
@@ -85,7 +85,7 @@ where
     }
 }
 
-/// 实现 `compute_presentation_token` 对于所有 AccountableAttrsVar
+// 实现 `compute_presentation_token` 对于所有 AccountableAttrsVar
 pub trait MultishowableAttrsVar<ConstraintF, A, AC, ACG>
 where
     ConstraintF: PrimeField,
@@ -94,7 +94,7 @@ where
     AC::Output: ToConstraintField<ConstraintF>,
     ACG: CommitmentGadget<AC, ConstraintF>,
 {
-    /// 从给定的可问责属性计算 presentation token
+    // 从给定的可问责属性计算 presentation token
     fn compute_presentation_token(
         &self,
         params: PoseidonParametersVar<ConstraintF>,
@@ -103,7 +103,7 @@ where
     ) -> Result<PresentationTokenVar<ConstraintF>, SynthesisError>;
 }
 
-/// 实现 `compute_presentation_token` 对于所有 AccountableAttrsVar
+// 实现 `compute_presentation_token` 对于所有 AccountableAttrsVar
 impl<ConstraintF, A, AV, AC, ACG> MultishowableAttrsVar<ConstraintF, A, AC, ACG> for AV
 where
     ConstraintF: PrimeField,
@@ -113,7 +113,7 @@ where
     AC::Output: ToConstraintField<ConstraintF>,
     ACG: CommitmentGadget<AC, ConstraintF>,
 {
-    /// 从给定的可问责属性计算 presentation token
+    // 从给定的可问责属性计算 presentation token
     fn compute_presentation_token(
         &self,
         params: PoseidonParametersVar<ConstraintF>,
@@ -140,7 +140,7 @@ where
     }
 }
 
-/// 证明 `token` 是使用随机种子进行 PRF 计算的结果
+// 证明 `token` 是使用随机种子进行 PRF 计算的结果
 #[derive(Clone, Default)]
 pub struct MultishowChecker<ConstraintF>
 where
@@ -158,8 +158,7 @@ where
     /// 表示这个属性字符串已经展示的次数的计数器（从 0 开始）
     pub ctr: u16,
 
-    // 常量 //
-    /// 波塞冬参数
+    // 常量：Poseidon参数
     pub params: PoseidonParameters<ConstraintF>,
 }
 
@@ -173,15 +172,21 @@ where
     ACG: CommitmentGadget<AC, ConstraintF>,
     AC::Output: ToConstraintField<ConstraintF>,
 {
-    /// 返回谓词是否满足
+    // 返回谓词是否满足
     fn pred(self, cs: ConstraintSystemRef<ConstraintF>, attrs: &AV) -> Result<(), SynthesisError> {
-        // 见证波塞冬参数
+        // 见证Poseidon参数
         let params = PoseidonParametersVar::new_constant(ns!(cs, "prf param"), &self.params)?;
 
         // 见证公共输入: epoch, nonce, token, 和最大计数器大小
-        let epoch = FpVar::<ConstraintF>::new_input(ns!(cs, "epoch"), || Ok(ConstraintF::from(self.epoch)))?;
-        let hidden_ctr = FpVar::<ConstraintF>::new_input(ns!(cs, "hidden ctr"), || Ok(self.token.hidden_ctr))?;
-        let max_num_presentations = FpVar::<ConstraintF>::new_input(ns!(cs, "max #presentations"), || Ok(ConstraintF::from(self.max_num_presentations)))?;
+        let epoch = FpVar::<ConstraintF>::new_input(ns!(cs, "epoch"), || {
+            Ok(ConstraintF::from(self.epoch))
+        })?;
+        let hidden_ctr =
+            FpVar::<ConstraintF>::new_input(ns!(cs, "hidden ctr"), || Ok(self.token.hidden_ctr))?;
+        let max_num_presentations =
+            FpVar::<ConstraintF>::new_input(ns!(cs, "max #presentations"), || {
+                Ok(ConstraintF::from(self.max_num_presentations))
+            })?;
 
         // 见证计数器私有输入
         let ctr =

@@ -1,4 +1,4 @@
-﻿use crate::credentials::employee_id::employee_info::{EmployeeInfo, EmployeeInfoVar};
+use crate::credentials::employee_id::employee_info::{EmployeeInfo, EmployeeInfoVar};
 
 use zkcreds::proof_data_structures::{
     ForestProof as ZkcredsForestProof, ForestProvingKey as ZkcredsForestPk,
@@ -99,4 +99,3 @@ lazy_static! {
         <H as TwoToOneCRH>::setup(&mut rng).unwrap()
     };
 }
-

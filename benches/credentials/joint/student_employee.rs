@@ -1,7 +1,7 @@
 //! 学生–员工联合：校企合作场景。单一承诺覆盖 `student_blob || employee_blob`。
 
 use crate::credentials::joint::params::{
-    Fr, JointComScheme, JointComSchemeG, JOINT_COM_PARAM, EMPLOYEE_RECORD_LEN, STUDENT_RECORD_LEN,
+    Fr, JointComScheme, JointComSchemeG, EMPLOYEE_RECORD_LEN, JOINT_COM_PARAM, STUDENT_RECORD_LEN,
 };
 use crate::credentials::joint::params::{H, HG, SE_JOINT_LEN};
 
@@ -18,11 +18,7 @@ use zkcreds::{
 use ark_bls12_381::Bls12_381;
 use ark_ff::{to_bytes, UniformRand};
 use ark_r1cs_std::{
-    alloc::AllocVar,
-    bits::ToBytesGadget,
-    fields::fp::FpVar,
-    uint8::UInt8,
-    R1CSVar,
+    alloc::AllocVar, bits::ToBytesGadget, fields::fp::FpVar, uint8::UInt8, R1CSVar,
 };
 use ark_relations::{
     ns,

@@ -72,8 +72,8 @@ pub fn setup_poseidon_params<F: PrimeField>(
 // 选择BLS12-381上的Poseidon的全局参数
 const POSEIDON_WIDTH: u8 = 5;
 //domain_sep:为了区分不同用途的哈希输入
-const COM_DOMAIN_SEP: &[u8] = b"pcom";//用于承诺
-const CRH_DOMAIN_SEP: &[u8] = b"pcrh";//用于Merkle tree、proof of membership
+const COM_DOMAIN_SEP: &[u8] = b"pcom"; //用于承诺
+const CRH_DOMAIN_SEP: &[u8] = b"pcrh"; //用于Merkle tree、proof of membership
 lazy_static! {
     static ref BLS12_POSEIDON_PARAMS: PoseidonParameters<BlsFr> =
         setup_poseidon_params(Curve::Bls381, 3, POSEIDON_WIDTH);

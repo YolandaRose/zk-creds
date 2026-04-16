@@ -18,11 +18,7 @@ use zkcreds::{
 use ark_bls12_381::Bls12_381;
 use ark_ff::{to_bytes, UniformRand};
 use ark_r1cs_std::{
-    alloc::AllocVar,
-    bits::ToBytesGadget,
-    fields::fp::FpVar,
-    uint8::UInt8,
-    R1CSVar,
+    alloc::AllocVar, bits::ToBytesGadget, fields::fp::FpVar, uint8::UInt8, R1CSVar,
 };
 use ark_relations::{
     ns,

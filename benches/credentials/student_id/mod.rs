@@ -23,8 +23,8 @@ use zkcreds::{
     attrs::Attrs,
     link::{link_proofs, verif_link_proof, LinkProofCtx, LinkVerifyingKey, PredPublicInputs},
     poseidon_utils::setup_poseidon_params,
-    pseudonymous_show::PseudonymousAttrs,
     pred::{prove_birth, prove_pred, verify_birth, PredicateChecker},
+    pseudonymous_show::PseudonymousAttrs,
     Com,
 };
 
@@ -32,7 +32,10 @@ use std::path::Path;
 
 use ark_bls12_381::{Bls12_381, Fr};
 use ark_ff::{BigInteger, PrimeField, UniformRand};
-use ark_std::{rand::{CryptoRng, Rng}, Zero};
+use ark_std::{
+    rand::{CryptoRng, Rng},
+    Zero,
+};
 use arkworks_utils::Curve;
 use criterion::Criterion;
 
@@ -60,7 +63,8 @@ fn cred_short_token(cred: &Com<StudentComScheme>) -> String {
 
 // 加载学生卡数据（相对 `CARGO_MANIFEST_DIR`，避免从其它工作目录跑 bench 时路径错或读到空文件）
 fn load_dump() -> StudentDump {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("benches/credentials/student_id/student_card.json");
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("benches/credentials/student_id/student_card.json");
     let bytes = std::fs::read(&path)
         .unwrap_or_else(|e| panic!("read student_card.json ({}): {e}", path.display()));
     // PowerShell `Set-Content -Encoding UTF8` 常写入 UTF-8 BOM；serde_json 在首字节会解析失败
@@ -152,7 +156,9 @@ fn gen_holdertag_crs<R: Rng>(rng: &mut R) -> (PredProvingKey, PredVerifyingKey) 
         HG,
     >(
         rng,
-        HolderTagChecker { holder_tag: Fr::zero() },
+        HolderTagChecker {
+            holder_tag: Fr::zero(),
+        },
     )
     .unwrap();
     (pk.clone(), pk.prepare_verifying_key())
@@ -218,8 +224,7 @@ fn user_req_issuance<R: Rng>(
         })
     });
     let start = Instant::now();
-    let hash_proof =
-        prove_birth(rng, issuance_pk, hash_checker, my_info.clone()).unwrap();
+    let hash_proof = prove_birth(rng, issuance_pk, hash_checker, my_info.clone()).unwrap();
     let elapsed = start.elapsed();
 
     println!(
@@ -248,7 +253,9 @@ fn issue(
     let sig_pubkey = load_issuer_pubkey();
     c.bench_function("Student ID: verifying birth+sig", |b| {
         b.iter(|| {
-            assert!(verify_birth(birth_vk, &req.hash_proof, &hash_checker, &req.attrs_com).unwrap());
+            assert!(
+                verify_birth(birth_vk, &req.hash_proof, &hash_checker, &req.attrs_com).unwrap()
+            );
             assert!(sig_pubkey.verify(&req.sig, &req.record_digest));
         })
     });
@@ -263,10 +270,7 @@ fn issue(
         "发行方：RSA 签名与 record_digest 不一致"
     );
     let elapsed = start.elapsed();
-    println!(
-        "[发行方] 验证签发请求完成。耗时 {} ms",
-        elapsed.as_millis()
-    );
+    println!("[发行方] 验证签发请求完成。耗时 {} ms", elapsed.as_millis());
 
     let tree_idx = state.next_free_tree;
     let leaf_idx = state.next_free_leaf;
@@ -439,7 +443,11 @@ fn user_link<R: Rng + CryptoRng>(
     let link_proof = link_proofs(rng, &link_ctx);
     let elapsed = start.elapsed();
     crate::util::record_size(proof_bench_name, &link_proof);
-    println!("[用户] {} 单次生成耗时 {} ms", proof_bench_name, elapsed.as_millis());
+    println!(
+        "[用户] {} 单次生成耗时 {} ms",
+        proof_bench_name,
+        elapsed.as_millis()
+    );
 
     c.bench_function(verif_bench_name, |b| {
         b.iter(|| assert!(verif_link_proof(&link_proof, &link_vk).unwrap()))
@@ -451,7 +459,11 @@ fn user_link<R: Rng + CryptoRng>(
         "验证方：链接证明验证失败"
     );
     let elapsed = start.elapsed();
-    println!("[验证方] {} 单次验证耗时 {} ms", verif_bench_name, elapsed.as_millis());
+    println!(
+        "[验证方] {} 单次验证耗时 {} ms",
+        verif_bench_name,
+        elapsed.as_millis()
+    );
     println!("\n──────── {} ────────", stage_title);
     println!(
         "[验证方] Merkle 树成员、森林成员、凭证承诺与公开输入一致性：通过（链接证明 Groth16-Sahai 验证通过）。"

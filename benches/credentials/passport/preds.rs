@@ -4,10 +4,8 @@ use crate::credentials::passport::{
 };
 
 use zkcreds::{
-    pred::PredicateChecker,
-    poseidon_utils::setup_poseidon_params,
-    pseudonymous_show::PseudonymousAttrsVar,
-    revealing_multishow::RevealingMultishowChecker,
+    poseidon_utils::setup_poseidon_params, pred::PredicateChecker,
+    pseudonymous_show::PseudonymousAttrsVar, revealing_multishow::RevealingMultishowChecker,
 };
 
 use ark_ff::ToConstraintField;
@@ -17,12 +15,12 @@ use ark_r1cs_std::{
     fields::{fp::FpVar, FieldVar},
     uint8::UInt8,
 };
-use arkworks_r1cs_gadgets::poseidon::PoseidonParametersVar;
-use arkworks_utils::Curve;
 use ark_relations::{
     ns,
     r1cs::{ConstraintSystemRef, SynthesisError},
 };
+use arkworks_r1cs_gadgets::poseidon::PoseidonParametersVar;
+use arkworks_utils::Curve;
 
 // 年龄检查器
 #[derive(Clone, Default)]

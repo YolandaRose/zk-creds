@@ -151,7 +151,7 @@ where
         &[attr_com_input, root_input].concat()
     };
 
-    // 收集所有谓词的 (vk, proof) 
+    // 收集所有谓词的 (vk, proof)
     let pred_pairs: Vec<(&groth16::VerifyingKey<E>, &groth16::Proof<E>)> = ctx
         .vk
         .pred_verif_keys

@@ -1,6 +1,6 @@
-﻿use crate::credentials::employee_id::params::{
-    DEPARTMENT_LEN, NAME_LEN, RECORD_BLOB_LEN, COMPANY_LEN, EMPLOYEE_COM_PARAM, EMPLOYEE_NO_LEN,
-    EmployeeComScheme, EmployeeComSchemeG,
+use crate::credentials::employee_id::params::{
+    EmployeeComScheme, EmployeeComSchemeG, COMPANY_LEN, DEPARTMENT_LEN, EMPLOYEE_COM_PARAM,
+    EMPLOYEE_NO_LEN, NAME_LEN, RECORD_BLOB_LEN,
 };
 
 use zkcreds::{
@@ -11,11 +11,7 @@ use zkcreds::{
 
 use ark_ff::{to_bytes, UniformRand};
 use ark_r1cs_std::{
-    alloc::AllocVar,
-    bits::ToBytesGadget,
-    fields::fp::FpVar,
-    uint8::UInt8,
-    R1CSVar,
+    alloc::AllocVar, bits::ToBytesGadget, fields::fp::FpVar, uint8::UInt8, R1CSVar,
 };
 use ark_relations::{
     ns,
@@ -189,16 +185,14 @@ impl AttrsVar<Fr, EmployeeInfo, EmployeeComScheme, EmployeeComSchemeG> for Emplo
         let seed = FpVar::<Fr>::new_witness(ns!(cs, "seed"), || Ok(attrs.seed))?;
         let name = Bytestring::new_witness(ns!(cs, "name"), || Ok(attrs.name.to_vec()))?;
         let company = Bytestring::new_witness(ns!(cs, "company"), || Ok(attrs.company.to_vec()))?;
-        let department = Bytestring::new_witness(ns!(cs, "department"), || Ok(attrs.department.to_vec()))?;
+        let department =
+            Bytestring::new_witness(ns!(cs, "department"), || Ok(attrs.department.to_vec()))?;
         let employee_no =
             Bytestring::new_witness(ns!(cs, "employee_no"), || Ok(attrs.employee_no.to_vec()))?;
         let hire_year =
-            FpVar::<Fr>::new_witness(ns!(cs, "hire_year"), || {
-                Ok(Fr::from(attrs.hire_year))
-            })?;
-        let card_expiry = FpVar::<Fr>::new_witness(ns!(cs, "card_expiry"), || {
-            Ok(Fr::from(attrs.card_expiry))
-        })?;
+            FpVar::<Fr>::new_witness(ns!(cs, "hire_year"), || Ok(Fr::from(attrs.hire_year)))?;
+        let card_expiry =
+            FpVar::<Fr>::new_witness(ns!(cs, "card_expiry"), || Ok(Fr::from(attrs.card_expiry)))?;
         Ok(EmployeeInfoVar {
             nonce,
             seed,
@@ -230,7 +224,9 @@ impl AttrsVar<Fr, EmployeeInfo, EmployeeComScheme, EmployeeComSchemeG> for Emplo
     }
 }
 
-impl AccountableAttrsVar<Fr, EmployeeInfo, EmployeeComScheme, EmployeeComSchemeG> for EmployeeInfoVar {
+impl AccountableAttrsVar<Fr, EmployeeInfo, EmployeeComScheme, EmployeeComSchemeG>
+    for EmployeeInfoVar
+{
     type Id = Bytestring<Fr>;
     type Seed = FpVar<Fr>;
 
@@ -242,4 +238,3 @@ impl AccountableAttrsVar<Fr, EmployeeInfo, EmployeeComScheme, EmployeeComSchemeG
         Ok(self.seed.clone())
     }
 }
-

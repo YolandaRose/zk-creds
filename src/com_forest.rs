@@ -1,4 +1,4 @@
-// 定义用于保存默克尔森林的结构，即一组默克尔树。这在凭证发行中使用。
+// 定义用于保存默克尔森林的结构，即一组默克尔树，在凭证发行中使用
 
 use crate::{
     attrs::Attrs,
@@ -213,11 +213,11 @@ where
     H::Output: ToConstraintField<ConstraintF>,
     HG: TwoToOneCRHGadget<H, ConstraintF>,
 {
-    // 公共输入
+    // 公共输入 //
     pub roots: Vec<H::Output>,
 
     // 私有输入 //
-    // 这对于所有证明都是必要的
+    // 属性承诺
     pub attrs_com: AC::Output,
     // 森林中的成员根
     pub member_root: H::Output,
@@ -307,7 +307,7 @@ pub(crate) mod test {
         let mut rng = ark_std::test_rng();
         let num_trees = 10;
 
-        // 制作一个随机承诺。这个值不重要
+        // 制作一个随机承诺
         let attrs_com =
             <<TestComSchemePedersen as CommitmentScheme>::Output as UniformRand>::rand(&mut rng);
 

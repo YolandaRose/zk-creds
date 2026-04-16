@@ -1,7 +1,7 @@
 //! 护照–员工联合：跨境商务等场景。`passport_blob || employee_blob`。
 
 use crate::credentials::joint::params::{
-    Fr, JointComScheme, JointComSchemeG, JOINT_COM_PARAM, EMPLOYEE_RECORD_LEN, PASSPORT_RECORD_LEN,
+    Fr, JointComScheme, JointComSchemeG, EMPLOYEE_RECORD_LEN, JOINT_COM_PARAM, PASSPORT_RECORD_LEN,
 };
 use crate::credentials::joint::params::{H, HG, PE_JOINT_LEN};
 
@@ -18,11 +18,7 @@ use zkcreds::{
 use ark_bls12_381::Bls12_381;
 use ark_ff::{to_bytes, UniformRand};
 use ark_r1cs_std::{
-    alloc::AllocVar,
-    bits::ToBytesGadget,
-    fields::fp::FpVar,
-    uint8::UInt8,
-    R1CSVar,
+    alloc::AllocVar, bits::ToBytesGadget, fields::fp::FpVar, uint8::UInt8, R1CSVar,
 };
 use ark_relations::{
     ns,
@@ -54,8 +50,14 @@ pub(crate) type PeTreeVk =
     TreeVerifyingKey<Bls12_381, PassportEmployeeJointInfo, JointComScheme, JointComSchemeG, H, HG>;
 pub(crate) type PeForestPk =
     ForestProvingKey<Bls12_381, PassportEmployeeJointInfo, JointComScheme, JointComSchemeG, H, HG>;
-pub(crate) type PeForestVk =
-    ForestVerifyingKey<Bls12_381, PassportEmployeeJointInfo, JointComScheme, JointComSchemeG, H, HG>;
+pub(crate) type PeForestVk = ForestVerifyingKey<
+    Bls12_381,
+    PassportEmployeeJointInfo,
+    JointComScheme,
+    JointComSchemeG,
+    H,
+    HG,
+>;
 pub(crate) type PePredProof = PredProof<
     Bls12_381,
     PassportEmployeeJointInfo,

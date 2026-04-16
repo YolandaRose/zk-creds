@@ -8,7 +8,10 @@ use crate::credentials::joint::passport_employee::PassportEmployeeJointInfoVar;
 use crate::credentials::joint::passport_student::PassportStudentJointInfoVar;
 use crate::credentials::joint::student_employee::StudentEmployeeJointInfoVar;
 
-use zkcreds::pred::PredicateChecker;
+use zkcreds::{
+    poseidon_utils::setup_poseidon_params, pred::PredicateChecker,
+    pseudonymous_show::PseudonymousAttrsVar,
+};
 
 use ark_ff::ToConstraintField;
 use ark_r1cs_std::{
@@ -21,6 +24,8 @@ use ark_relations::{
     ns,
     r1cs::{ConstraintSystemRef, SynthesisError},
 };
+use arkworks_r1cs_gadgets::poseidon::PoseidonParametersVar;
+use arkworks_utils::Curve;
 use core::cmp::Ordering;
 
 use zkcreds::Bytestring;
@@ -62,8 +67,14 @@ pub(crate) struct SeNameSchoolCompanyChecker {
     pub(crate) expected_company: [u8; EMPLOYEE_COMPANY_LEN],
 }
 
-impl PredicateChecker<Fr, StudentEmployeeJointInfo, StudentEmployeeJointInfoVar, JointComScheme, JointComSchemeG>
-    for SeNameSchoolCompanyChecker
+impl
+    PredicateChecker<
+        Fr,
+        StudentEmployeeJointInfo,
+        StudentEmployeeJointInfoVar,
+        JointComScheme,
+        JointComSchemeG,
+    > for SeNameSchoolCompanyChecker
 {
     fn pred(
         self,
@@ -77,8 +88,9 @@ impl PredicateChecker<Fr, StudentEmployeeJointInfo, StudentEmployeeJointInfoVar,
             UInt8::new_input_vec(ns!(cs, "expected company"), &self.expected_company)?;
 
         // name equality: student.name == employee.name
-        attrs.student_blob.0[STUDENT_NAME_OFF..STUDENT_NAME_OFF + STUDENT_NAME_LEN]
-            .enforce_equal(&attrs.employee_blob.0[EMPLOYEE_NAME_OFF..EMPLOYEE_NAME_OFF + EMPLOYEE_NAME_LEN])?;
+        attrs.student_blob.0[STUDENT_NAME_OFF..STUDENT_NAME_OFF + STUDENT_NAME_LEN].enforce_equal(
+            &attrs.employee_blob.0[EMPLOYEE_NAME_OFF..EMPLOYEE_NAME_OFF + EMPLOYEE_NAME_LEN],
+        )?;
 
         // student.school == expected_school
         attrs.student_blob.0[STUDENT_SCHOOL_OFF..STUDENT_SCHOOL_OFF + STUDENT_SCHOOL_LEN]
@@ -101,22 +113,110 @@ impl PredicateChecker<Fr, StudentEmployeeJointInfo, StudentEmployeeJointInfoVar,
 }
 
 #[derive(Clone)]
-pub(crate) struct SeStudentExpiryChecker {
-    pub(crate) threshold_expiry: Fr,
+pub(crate) struct JointHolderTagChecker {
+    pub(crate) holder_tag: Fr,
 }
 
-impl PredicateChecker<Fr, StudentEmployeeJointInfo, StudentEmployeeJointInfoVar, JointComScheme, JointComSchemeG>
-    for SeStudentExpiryChecker
+impl
+    PredicateChecker<
+        Fr,
+        StudentEmployeeJointInfo,
+        StudentEmployeeJointInfoVar,
+        JointComScheme,
+        JointComSchemeG,
+    > for JointHolderTagChecker
 {
     fn pred(
         self,
         cs: ConstraintSystemRef<Fr>,
         attrs: &StudentEmployeeJointInfoVar,
     ) -> Result<(), SynthesisError> {
-        let threshold =
-            FpVar::<Fr>::new_input(ns!(cs, "se student expiry threshold"), || {
-                Ok(self.threshold_expiry)
-            })?;
+        let params = setup_poseidon_params(Curve::Bls381, 3, 5);
+        let params_var = PoseidonParametersVar::new_constant(ns!(cs, "prf param"), &params)?;
+        let holder_tag = FpVar::<Fr>::new_input(ns!(cs, "holder tag"), || Ok(self.holder_tag))?;
+        let token = attrs.compute_presentation_token(params_var)?;
+        token.pseudonym.enforce_equal(&holder_tag)
+    }
+
+    fn public_inputs(&self) -> Vec<Fr> {
+        vec![self.holder_tag]
+    }
+}
+
+impl
+    PredicateChecker<
+        Fr,
+        PassportStudentJointInfo,
+        PassportStudentJointInfoVar,
+        JointComScheme,
+        JointComSchemeG,
+    > for JointHolderTagChecker
+{
+    fn pred(
+        self,
+        cs: ConstraintSystemRef<Fr>,
+        attrs: &PassportStudentJointInfoVar,
+    ) -> Result<(), SynthesisError> {
+        let params = setup_poseidon_params(Curve::Bls381, 3, 5);
+        let params_var = PoseidonParametersVar::new_constant(ns!(cs, "prf param"), &params)?;
+        let holder_tag = FpVar::<Fr>::new_input(ns!(cs, "holder tag"), || Ok(self.holder_tag))?;
+        let token = attrs.compute_presentation_token(params_var)?;
+        token.pseudonym.enforce_equal(&holder_tag)
+    }
+
+    fn public_inputs(&self) -> Vec<Fr> {
+        vec![self.holder_tag]
+    }
+}
+
+impl
+    PredicateChecker<
+        Fr,
+        PassportEmployeeJointInfo,
+        PassportEmployeeJointInfoVar,
+        JointComScheme,
+        JointComSchemeG,
+    > for JointHolderTagChecker
+{
+    fn pred(
+        self,
+        cs: ConstraintSystemRef<Fr>,
+        attrs: &PassportEmployeeJointInfoVar,
+    ) -> Result<(), SynthesisError> {
+        let params = setup_poseidon_params(Curve::Bls381, 3, 5);
+        let params_var = PoseidonParametersVar::new_constant(ns!(cs, "prf param"), &params)?;
+        let holder_tag = FpVar::<Fr>::new_input(ns!(cs, "holder tag"), || Ok(self.holder_tag))?;
+        let token = attrs.compute_presentation_token(params_var)?;
+        token.pseudonym.enforce_equal(&holder_tag)
+    }
+
+    fn public_inputs(&self) -> Vec<Fr> {
+        vec![self.holder_tag]
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct SeStudentExpiryChecker {
+    pub(crate) threshold_expiry: Fr,
+}
+
+impl
+    PredicateChecker<
+        Fr,
+        StudentEmployeeJointInfo,
+        StudentEmployeeJointInfoVar,
+        JointComScheme,
+        JointComSchemeG,
+    > for SeStudentExpiryChecker
+{
+    fn pred(
+        self,
+        cs: ConstraintSystemRef<Fr>,
+        attrs: &StudentEmployeeJointInfoVar,
+    ) -> Result<(), SynthesisError> {
+        let threshold = FpVar::<Fr>::new_input(ns!(cs, "se student expiry threshold"), || {
+            Ok(self.threshold_expiry)
+        })?;
         let ex = card_expiry_tail_fr(&attrs.student_blob)?;
         ex.enforce_cmp(&threshold, Ordering::Greater, false)
     }
@@ -131,18 +231,23 @@ pub(crate) struct SeEmployeeExpiryChecker {
     pub(crate) threshold_expiry: Fr,
 }
 
-impl PredicateChecker<Fr, StudentEmployeeJointInfo, StudentEmployeeJointInfoVar, JointComScheme, JointComSchemeG>
-    for SeEmployeeExpiryChecker
+impl
+    PredicateChecker<
+        Fr,
+        StudentEmployeeJointInfo,
+        StudentEmployeeJointInfoVar,
+        JointComScheme,
+        JointComSchemeG,
+    > for SeEmployeeExpiryChecker
 {
     fn pred(
         self,
         cs: ConstraintSystemRef<Fr>,
         attrs: &StudentEmployeeJointInfoVar,
     ) -> Result<(), SynthesisError> {
-        let threshold =
-            FpVar::<Fr>::new_input(ns!(cs, "se employee expiry threshold"), || {
-                Ok(self.threshold_expiry)
-            })?;
+        let threshold = FpVar::<Fr>::new_input(ns!(cs, "se employee expiry threshold"), || {
+            Ok(self.threshold_expiry)
+        })?;
         let ex = card_expiry_tail_fr(&attrs.employee_blob)?;
         ex.enforce_cmp(&threshold, Ordering::Greater, false)
     }
@@ -161,8 +266,14 @@ pub(crate) struct PsTicketChecker {
     pub(crate) expected_nationality: [u8; PASSPORT_NATIONALITY_LEN],
 }
 
-impl PredicateChecker<Fr, PassportStudentJointInfo, PassportStudentJointInfoVar, JointComScheme, JointComSchemeG>
-    for PsTicketChecker
+impl
+    PredicateChecker<
+        Fr,
+        PassportStudentJointInfo,
+        PassportStudentJointInfoVar,
+        JointComScheme,
+        JointComSchemeG,
+    > for PsTicketChecker
 {
     fn pred(
         self,
@@ -175,19 +286,22 @@ impl PredicateChecker<Fr, PassportStudentJointInfo, PassportStudentJointInfoVar,
             UInt8::new_input_vec(ns!(cs, "expected nationality"), &self.expected_nationality)?;
 
         // passport nationality match
-        attrs.passport_blob.0[PASSPORT_NATIONALITY_OFF..PASSPORT_NATIONALITY_OFF + PASSPORT_NATIONALITY_LEN]
+        attrs.passport_blob.0
+            [PASSPORT_NATIONALITY_OFF..PASSPORT_NATIONALITY_OFF + PASSPORT_NATIONALITY_LEN]
             .enforce_equal(&expected_nat)?;
 
         // age: passport.dob <= threshold_dob
-        let dob_fp = u32_be_bytes_to_fp(
-            &attrs.passport_blob.0[PASSPORT_DOB_OFF..PASSPORT_DOB_OFF + 4],
-        )?;
+        let dob_fp =
+            u32_be_bytes_to_fp(&attrs.passport_blob.0[PASSPORT_DOB_OFF..PASSPORT_DOB_OFF + 4])?;
         dob_fp.enforce_cmp(&threshold_dob, Ordering::Less, true)?;
 
         // name equality: student.name == passport.name[0..32], and passport.name[32..] must be 0
-        attrs.student_blob.0[STUDENT_NAME_OFF..STUDENT_NAME_OFF + STUDENT_NAME_LEN]
-            .enforce_equal(&attrs.passport_blob.0[PASSPORT_NAME_OFF..PASSPORT_NAME_OFF + STUDENT_NAME_LEN])?;
-        for b in &attrs.passport_blob.0[PASSPORT_NAME_OFF + STUDENT_NAME_LEN..PASSPORT_NAME_OFF + PASSPORT_NAME_LEN] {
+        attrs.student_blob.0[STUDENT_NAME_OFF..STUDENT_NAME_OFF + STUDENT_NAME_LEN].enforce_equal(
+            &attrs.passport_blob.0[PASSPORT_NAME_OFF..PASSPORT_NAME_OFF + STUDENT_NAME_LEN],
+        )?;
+        for b in &attrs.passport_blob.0
+            [PASSPORT_NAME_OFF + STUDENT_NAME_LEN..PASSPORT_NAME_OFF + PASSPORT_NAME_LEN]
+        {
             b.enforce_equal(&UInt8::constant(0u8))?;
         }
 
@@ -208,18 +322,23 @@ pub(crate) struct PsPassportExpiryChecker {
     pub(crate) threshold_expiry: Fr,
 }
 
-impl PredicateChecker<Fr, PassportStudentJointInfo, PassportStudentJointInfoVar, JointComScheme, JointComSchemeG>
-    for PsPassportExpiryChecker
+impl
+    PredicateChecker<
+        Fr,
+        PassportStudentJointInfo,
+        PassportStudentJointInfoVar,
+        JointComScheme,
+        JointComSchemeG,
+    > for PsPassportExpiryChecker
 {
     fn pred(
         self,
         cs: ConstraintSystemRef<Fr>,
         attrs: &PassportStudentJointInfoVar,
     ) -> Result<(), SynthesisError> {
-        let threshold =
-            FpVar::<Fr>::new_input(ns!(cs, "ps passport expiry threshold"), || {
-                Ok(self.threshold_expiry)
-            })?;
+        let threshold = FpVar::<Fr>::new_input(ns!(cs, "ps passport expiry threshold"), || {
+            Ok(self.threshold_expiry)
+        })?;
         let ex = passport_expiry_fr(&attrs.passport_blob)?;
         ex.enforce_cmp(&threshold, Ordering::Greater, false)
     }
@@ -234,18 +353,23 @@ pub(crate) struct PsStudentExpiryChecker {
     pub(crate) threshold_expiry: Fr,
 }
 
-impl PredicateChecker<Fr, PassportStudentJointInfo, PassportStudentJointInfoVar, JointComScheme, JointComSchemeG>
-    for PsStudentExpiryChecker
+impl
+    PredicateChecker<
+        Fr,
+        PassportStudentJointInfo,
+        PassportStudentJointInfoVar,
+        JointComScheme,
+        JointComSchemeG,
+    > for PsStudentExpiryChecker
 {
     fn pred(
         self,
         cs: ConstraintSystemRef<Fr>,
         attrs: &PassportStudentJointInfoVar,
     ) -> Result<(), SynthesisError> {
-        let threshold =
-            FpVar::<Fr>::new_input(ns!(cs, "ps student expiry threshold"), || {
-                Ok(self.threshold_expiry)
-            })?;
+        let threshold = FpVar::<Fr>::new_input(ns!(cs, "ps student expiry threshold"), || {
+            Ok(self.threshold_expiry)
+        })?;
         let ex = card_expiry_tail_fr(&attrs.student_blob)?;
         ex.enforce_cmp(&threshold, Ordering::Greater, false)
     }
@@ -262,8 +386,14 @@ pub(crate) struct PeBusinessChecker {
     pub(crate) threshold_employee_expiry: Fr,
 }
 
-impl PredicateChecker<Fr, PassportEmployeeJointInfo, PassportEmployeeJointInfoVar, JointComScheme, JointComSchemeG>
-    for PeBusinessChecker
+impl
+    PredicateChecker<
+        Fr,
+        PassportEmployeeJointInfo,
+        PassportEmployeeJointInfoVar,
+        JointComScheme,
+        JointComSchemeG,
+    > for PeBusinessChecker
 {
     fn pred(
         self,
@@ -272,10 +402,9 @@ impl PredicateChecker<Fr, PassportEmployeeJointInfo, PassportEmployeeJointInfoVa
     ) -> Result<(), SynthesisError> {
         let expected_company =
             UInt8::new_input_vec(ns!(cs, "expected company"), &self.expected_company)?;
-        let threshold =
-            FpVar::<Fr>::new_input(ns!(cs, "employee expiry threshold"), || {
-                Ok(self.threshold_employee_expiry)
-            })?;
+        let threshold = FpVar::<Fr>::new_input(ns!(cs, "employee expiry threshold"), || {
+            Ok(self.threshold_employee_expiry)
+        })?;
 
         // employee expiry > threshold
         let ex = card_expiry_tail_fr(&attrs.employee_blob)?;
@@ -287,8 +416,12 @@ impl PredicateChecker<Fr, PassportEmployeeJointInfo, PassportEmployeeJointInfoVa
 
         // name equality: employee.name == passport.name[0..32], and passport.name[32..] must be 0
         attrs.employee_blob.0[EMPLOYEE_NAME_OFF..EMPLOYEE_NAME_OFF + EMPLOYEE_NAME_LEN]
-            .enforce_equal(&attrs.passport_blob.0[PASSPORT_NAME_OFF..PASSPORT_NAME_OFF + EMPLOYEE_NAME_LEN])?;
-        for b in &attrs.passport_blob.0[PASSPORT_NAME_OFF + EMPLOYEE_NAME_LEN..PASSPORT_NAME_OFF + PASSPORT_NAME_LEN] {
+            .enforce_equal(
+                &attrs.passport_blob.0[PASSPORT_NAME_OFF..PASSPORT_NAME_OFF + EMPLOYEE_NAME_LEN],
+            )?;
+        for b in &attrs.passport_blob.0
+            [PASSPORT_NAME_OFF + EMPLOYEE_NAME_LEN..PASSPORT_NAME_OFF + PASSPORT_NAME_LEN]
+        {
             b.enforce_equal(&UInt8::constant(0u8))?;
         }
 
@@ -309,18 +442,23 @@ pub(crate) struct PePassportExpiryChecker {
     pub(crate) threshold_expiry: Fr,
 }
 
-impl PredicateChecker<Fr, PassportEmployeeJointInfo, PassportEmployeeJointInfoVar, JointComScheme, JointComSchemeG>
-    for PePassportExpiryChecker
+impl
+    PredicateChecker<
+        Fr,
+        PassportEmployeeJointInfo,
+        PassportEmployeeJointInfoVar,
+        JointComScheme,
+        JointComSchemeG,
+    > for PePassportExpiryChecker
 {
     fn pred(
         self,
         cs: ConstraintSystemRef<Fr>,
         attrs: &PassportEmployeeJointInfoVar,
     ) -> Result<(), SynthesisError> {
-        let threshold =
-            FpVar::<Fr>::new_input(ns!(cs, "pe passport expiry threshold"), || {
-                Ok(self.threshold_expiry)
-            })?;
+        let threshold = FpVar::<Fr>::new_input(ns!(cs, "pe passport expiry threshold"), || {
+            Ok(self.threshold_expiry)
+        })?;
         let ex = passport_expiry_fr(&attrs.passport_blob)?;
         ex.enforce_cmp(&threshold, Ordering::Greater, false)
     }
@@ -335,18 +473,23 @@ pub(crate) struct PeEmployeeExpiryChecker {
     pub(crate) threshold_expiry: Fr,
 }
 
-impl PredicateChecker<Fr, PassportEmployeeJointInfo, PassportEmployeeJointInfoVar, JointComScheme, JointComSchemeG>
-    for PeEmployeeExpiryChecker
+impl
+    PredicateChecker<
+        Fr,
+        PassportEmployeeJointInfo,
+        PassportEmployeeJointInfoVar,
+        JointComScheme,
+        JointComSchemeG,
+    > for PeEmployeeExpiryChecker
 {
     fn pred(
         self,
         cs: ConstraintSystemRef<Fr>,
         attrs: &PassportEmployeeJointInfoVar,
     ) -> Result<(), SynthesisError> {
-        let threshold =
-            FpVar::<Fr>::new_input(ns!(cs, "pe employee expiry threshold"), || {
-                Ok(self.threshold_expiry)
-            })?;
+        let threshold = FpVar::<Fr>::new_input(ns!(cs, "pe employee expiry threshold"), || {
+            Ok(self.threshold_expiry)
+        })?;
         let ex = card_expiry_tail_fr(&attrs.employee_blob)?;
         ex.enforce_cmp(&threshold, Ordering::Greater, false)
     }

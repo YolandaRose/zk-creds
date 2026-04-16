@@ -25,8 +25,7 @@ pub(crate) const HASH_LEN: usize = 32;
 pub(crate) const BIOMETRIC_RAW_MAX: usize = 128;
 
 // nationality | name | dob (be u32 YYYYMMDD) | passport_expiry (be u32 YYYYMMDD) | biometrics raw (padded)
-pub(crate) const RECORD_BLOB_LEN: usize =
-    STATE_ID_LEN + NAME_LEN + 4 + 4 + BIOMETRIC_RAW_MAX;
+pub(crate) const RECORD_BLOB_LEN: usize = STATE_ID_LEN + NAME_LEN + 4 + 4 + BIOMETRIC_RAW_MAX;
 
 pub(crate) type E = Bls12_381;
 pub(crate) type Fr = <E as PairingEngine>::Fr;

@@ -4,9 +4,15 @@ use crate::credentials::joint::params::{
     Fr, JointComScheme, JointComSchemeG, EMPLOYEE_RECORD_LEN, PASSPORT_RECORD_LEN, PE_JOINT_LEN,
     PS_JOINT_LEN, SE_JOINT_LEN, STUDENT_RECORD_LEN,
 };
-use crate::credentials::joint::passport_employee::{PassportEmployeeJointInfo, PassportEmployeeJointInfoVar};
-use crate::credentials::joint::passport_student::{PassportStudentJointInfo, PassportStudentJointInfoVar};
-use crate::credentials::joint::student_employee::{StudentEmployeeJointInfo, StudentEmployeeJointInfoVar};
+use crate::credentials::joint::passport_employee::{
+    PassportEmployeeJointInfo, PassportEmployeeJointInfoVar,
+};
+use crate::credentials::joint::passport_student::{
+    PassportStudentJointInfo, PassportStudentJointInfoVar,
+};
+use crate::credentials::joint::student_employee::{
+    StudentEmployeeJointInfo, StudentEmployeeJointInfoVar,
+};
 
 use crate::credentials::passport::ark_sha256::Sha256Gadget;
 
@@ -46,8 +52,14 @@ impl SeJointHashChecker {
     }
 }
 
-impl PredicateChecker<Fr, StudentEmployeeJointInfo, StudentEmployeeJointInfoVar, JointComScheme, JointComSchemeG>
-    for SeJointHashChecker
+impl
+    PredicateChecker<
+        Fr,
+        StudentEmployeeJointInfo,
+        StudentEmployeeJointInfoVar,
+        JointComScheme,
+        JointComSchemeG,
+    > for SeJointHashChecker
 {
     fn pred(
         self,
@@ -63,7 +75,10 @@ impl PredicateChecker<Fr, StudentEmployeeJointInfo, StudentEmployeeJointInfoVar,
             .student_blob
             .0
             .enforce_equal(&blob_w[..STUDENT_RECORD_LEN])?;
-        attrs.employee_blob.0.enforce_equal(&blob_w[STUDENT_RECORD_LEN..SE_JOINT_LEN])?;
+        attrs
+            .employee_blob
+            .0
+            .enforce_equal(&blob_w[STUDENT_RECORD_LEN..SE_JOINT_LEN])?;
         Ok(())
     }
 
@@ -98,8 +113,14 @@ impl PsJointHashChecker {
     }
 }
 
-impl PredicateChecker<Fr, PassportStudentJointInfo, PassportStudentJointInfoVar, JointComScheme, JointComSchemeG>
-    for PsJointHashChecker
+impl
+    PredicateChecker<
+        Fr,
+        PassportStudentJointInfo,
+        PassportStudentJointInfoVar,
+        JointComScheme,
+        JointComSchemeG,
+    > for PsJointHashChecker
 {
     fn pred(
         self,
@@ -153,8 +174,14 @@ impl PeJointHashChecker {
     }
 }
 
-impl PredicateChecker<Fr, PassportEmployeeJointInfo, PassportEmployeeJointInfoVar, JointComScheme, JointComSchemeG>
-    for PeJointHashChecker
+impl
+    PredicateChecker<
+        Fr,
+        PassportEmployeeJointInfo,
+        PassportEmployeeJointInfoVar,
+        JointComScheme,
+        JointComSchemeG,
+    > for PeJointHashChecker
 {
     fn pred(
         self,
