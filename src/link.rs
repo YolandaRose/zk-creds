@@ -239,6 +239,7 @@ mod test {
 
         // 创建一个属性并将其放入树中
         let person = NameAndBirthYear::new(&mut rng, b"Andrew", 1992);
+        println!("{}", person.status_text());
         let person_com = Attrs::<_, TestComSchemePedersen>::commit(&person);
 
         // 创建一个树并“发行”，即在树中放置人员承诺，索引为 17

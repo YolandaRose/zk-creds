@@ -1,4 +1,4 @@
-//! Defines some structs for testing purposes
+//! 定义一些结构体用于测试
 
 use core::borrow::Borrow;
 
@@ -24,6 +24,7 @@ use ark_ff::UniformRand;
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     bits::ToBytesGadget,
+    eq::EqGadget,
     fields::fp::FpVar,
     uint8::UInt8,
     R1CSVar,
@@ -39,7 +40,7 @@ use ark_std::{
 };
 use lazy_static::lazy_static;
 
-// Define different window sizes for Pedersen commitments
+// 为Pedersen承诺定义不同的窗口大小
 
 #[derive(Clone)]
 pub struct Window8x63;
@@ -127,24 +128,29 @@ lazy_static! {
 
 const NAME_MAXLEN: usize = 16;
 
+// 定义一个结构体，表示一个人的姓名和出生年份
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct NameAndBirthYear {
     nonce: ComNonce,
     seed: Fr,
     first_name: [u8; NAME_MAXLEN],
     birth_year: Fr,
+    status: bool,
 }
 
+// 定义一个结构体，表示一个人的姓名和出生年份的变量
 #[derive(Clone)]
 pub struct NameAndBirthYearVar {
     nonce: ComNonce,
     seed: FpVar<Fr>,
     first_name: Vec<UInt8<Fr>>,
     pub(crate) birth_year: FpVar<Fr>,
+    status: UInt8<Fr>,
 }
 
+// 实现NameAndBirthYear结构体
 impl NameAndBirthYear {
-    /// Constructs a new `NameAndBirthYear`, sampling a random nonce for commitment
+    // 构造一个新的`NameAndBirthYear`，采样一个随机nonce用于承诺
     pub fn new<R: Rng>(rng: &mut R, first_name: &[u8], birth_year: u16) -> NameAndBirthYear {
         assert!(first_name.len() <= NAME_MAXLEN);
         let mut name_buf = [0u8; 16];
@@ -158,44 +164,73 @@ impl NameAndBirthYear {
             seed,
             first_name: name_buf,
             birth_year: Fr::from(birth_year),
+            status: true,
         }
+    }
+
+    // 返回当前凭证状态的可读性字符串
+    pub fn status_text(&self) -> &'static str {
+        if self.status {
+            "凭证未撤销"
+        } else {
+            "凭证已撤销"
+        }
+    }
+
+    // 标记当前凭证为已撤销
+    pub fn revoke(&mut self) {
+        self.status = false;
+    }
+
+    // 返回当前凭证是否已撤销
+    pub fn is_revoked(&self) -> bool {
+        !self.status
     }
 }
 
+// 实现Attrs<Fr, TestComSchemePedersen> for NameAndBirthYear
 impl Attrs<Fr, TestComSchemePedersen> for NameAndBirthYear {
-    /// Serializes the attrs into bytes
+    // 序列化属性为字节
     fn to_bytes(&self) -> Vec<u8> {
         let mut buf = self.first_name.to_vec();
         self.birth_year.serialize(&mut buf).unwrap();
+        buf.push(self.status as u8);
         buf
     }
 
+    // 获取承诺参数
     fn get_com_param(&self) -> &ComParam<TestComSchemePedersen> {
         &*BIG_COM_PARAM
     }
 
+    // 获取承诺随机数
     fn get_com_nonce(&self) -> &ComNonce {
         &self.nonce
     }
 }
 
+// 实现Attrs<Fr, Bls12PoseidonCommitter> for NameAndBirthYear
 impl Attrs<Fr, Bls12PoseidonCommitter> for NameAndBirthYear {
     /// Serializes the attrs into bytes
     fn to_bytes(&self) -> Vec<u8> {
         let mut buf = self.first_name.to_vec();
         self.birth_year.serialize(&mut buf).unwrap();
+        buf.push(self.status as u8);
         buf
     }
 
+    // 获取承诺参数
     fn get_com_param(&self) -> &() {
         &()
     }
 
+    // 获取承诺随机数
     fn get_com_nonce(&self) -> &ComNonce {
         &self.nonce
     }
 }
 
+// 实现AccountableAttrs<Fr, TestComSchemePedersen> for NameAndBirthYear
 impl AccountableAttrs<Fr, TestComSchemePedersen> for NameAndBirthYear {
     type Id = Vec<u8>;
     type Seed = Fr;
@@ -211,44 +246,52 @@ impl AccountableAttrs<Fr, TestComSchemePedersen> for NameAndBirthYear {
 
 impl ToBytesGadget<Fr> for NameAndBirthYearVar {
     fn to_bytes(&self) -> Result<Vec<UInt8<Fr>>, SynthesisError> {
-        Ok([self.first_name.to_bytes()?, self.birth_year.to_bytes()?].concat())
+        Ok([
+            self.first_name.to_bytes()?,
+            self.birth_year.to_bytes()?,
+            vec![self.status.clone()],
+        ]
+        .concat())
     }
 }
 
 impl AttrsVar<Fr, NameAndBirthYear, TestComSchemePedersen, TestComSchemePedersenG>
     for NameAndBirthYearVar
 {
-    /// Returns the constraint system used by this var
+    // 返回用于此变量的约束系统
     fn cs(&self) -> ConstraintSystemRef<Fr> {
         self.seed
             .cs()
             .or(self.first_name.cs())
             .or(self.birth_year.cs())
+            .or(self.status.cs())
     }
 
     // Allocates a vector of UInt8s. This panics if `f()` is `Err`, since we don't know how many
-    // bytes to allocate
+    // 分配一个UInt8向量。如果`f()`是`Err`，则会发生panic，因为我们不知道要分配多少字节
     fn witness_attrs(
         cs: impl Into<Namespace<Fr>>,
         native_attr: &NameAndBirthYear,
     ) -> Result<Self, SynthesisError> {
         let cs = cs.into().cs();
 
-        // Get the nonce normally. This is not a variable
+        // 正常获取nonce。这不是一个变量
         let nonce: ComNonce = native_attr.nonce.clone();
 
-        // Witness the seed, first name, and birth year
+        // 见证种子、姓名、出生年份和状态
         let seed = FpVar::new_witness(ns!(cs, "seed"), || Ok(native_attr.seed))?;
         let first_name = UInt8::new_witness_vec(ns!(cs, "first name"), &native_attr.first_name)?;
         let birth_year =
             FpVar::<Fr>::new_witness(ns!(cs, "birth year"), || Ok(native_attr.birth_year))?;
+        let status = UInt8::new_witness(ns!(cs, "status"), || Ok(native_attr.status as u8))?;
 
-        // Return the witnessed values
+        // 返回见证的值
         Ok(NameAndBirthYearVar {
             nonce,
             seed,
             first_name,
             birth_year,
+            status,
         })
     }
 
@@ -283,37 +326,40 @@ impl AccountableAttrsVar<Fr, NameAndBirthYear, TestComSchemePedersen, TestComSch
 impl AttrsVar<Fr, NameAndBirthYear, Bls12PoseidonCommitter, Bls12PoseidonCommitter>
     for NameAndBirthYearVar
 {
-    /// Returns the constraint system used by this var
+    // 返回用于此变量的约束系统
     fn cs(&self) -> ConstraintSystemRef<Fr> {
         self.seed
             .cs()
             .or(self.first_name.cs())
             .or(self.birth_year.cs())
+            .or(self.status.cs())
     }
 
     // Allocates a vector of UInt8s. This panics if `f()` is `Err`, since we don't know how many
-    // bytes to allocate
+    // 分配一个UInt8向量。如果`f()`是`Err`，则会发生panic，因为我们不知道要分配多少字节
     fn witness_attrs(
         cs: impl Into<Namespace<Fr>>,
         native_attr: &NameAndBirthYear,
     ) -> Result<Self, SynthesisError> {
         let cs = cs.into().cs();
 
-        // Get the nonce normally. This is not a variable
+        // 正常获取nonce。这不是一个变量
         let nonce: ComNonce = native_attr.nonce.clone();
 
-        // Witness the seed, first name, and birth year
+        // 见证种子、姓名、出生年份和状态
         let seed = FpVar::new_witness(ns!(cs, "seed"), || Ok(native_attr.seed))?;
         let first_name = UInt8::new_witness_vec(ns!(cs, "first name"), &native_attr.first_name)?;
         let birth_year =
             FpVar::<Fr>::new_witness(ns!(cs, "birth year"), || Ok(native_attr.birth_year))?;
+        let status = UInt8::new_witness(ns!(cs, "status"), || Ok(native_attr.status as u8))?;
 
-        // Return the witnessed values
+        // 返回见证的值
         Ok(NameAndBirthYearVar {
             nonce,
             seed,
             first_name,
             birth_year,
+            status,
         })
     }
 
@@ -354,7 +400,7 @@ impl AccountableAttrsVar<Fr, NameAndBirthYear, Bls12PoseidonCommitter, Bls12Pose
     }
 }
 
-// Define a predicate that will tell whether the given `NameAndBirthYear` is at least X years
+// 定义一个谓词，用于判断给定的`NameAndBirthYear`是否至少为X岁。谓词是：attrs.birth_year ≤ self.threshold_birth_year
 // old. The predicate is: attrs.birth_year ≤ self.threshold_birth_year
 #[derive(Clone)]
 pub struct AgeChecker {
@@ -370,23 +416,24 @@ impl
         TestComSchemePedersenG,
     > for AgeChecker
 {
-    /// Returns whether or not the predicate was satisfied
+    // 返回谓词是否满足
     fn pred(
         self,
         cs: ConstraintSystemRef<Fr>,
         attrs: &NameAndBirthYearVar,
     ) -> Result<(), SynthesisError> {
-        // Witness the threshold year as a public input
+        // 见证阈值年份作为公共输入
         let threshold_birth_year =
             FpVar::<Fr>::new_input(ns!(cs, "threshold year"), || Ok(self.threshold_birth_year))?;
-        // Assert that attrs.birth_year ≤ threshold_birth_year
+        // 断言attrs.birth_year ≤ threshold_birth_year
         attrs
             .birth_year
-            .enforce_cmp(&threshold_birth_year, core::cmp::Ordering::Less, true)
+            .enforce_cmp(&threshold_birth_year, core::cmp::Ordering::Less, true)?;
+        // 断言凭证未被撤销
+        attrs.status.enforce_equal(&UInt8::constant(1))
     }
 
-    /// This outputs the field elements corresponding to the public inputs of this predicate.
-    /// This DOES NOT include `attrs`.
+    // 输出与谓词公共输入对应的字段元素。这不包括 `attrs`。
     fn public_inputs(&self) -> Vec<Fr> {
         vec![self.threshold_birth_year]
     }
@@ -401,24 +448,76 @@ impl
         Bls12PoseidonCommitter,
     > for AgeChecker
 {
-    /// Returns whether or not the predicate was satisfied
+    // 返回谓词是否满足
     fn pred(
         self,
         cs: ConstraintSystemRef<Fr>,
         attrs: &NameAndBirthYearVar,
     ) -> Result<(), SynthesisError> {
-        // Witness the threshold year as a public input
+        // 见证阈值年份作为公共输入
         let threshold_birth_year =
             FpVar::<Fr>::new_input(ns!(cs, "threshold year"), || Ok(self.threshold_birth_year))?;
-        // Assert that attrs.birth_year ≤ threshold_birth_year
+        // 断言attrs.birth_year ≤ threshold_birth_year
         attrs
             .birth_year
-            .enforce_cmp(&threshold_birth_year, core::cmp::Ordering::Less, true)
+            .enforce_cmp(&threshold_birth_year, core::cmp::Ordering::Less, true)?;
+        // 断言凭证未被撤销
+        attrs.status.enforce_equal(&UInt8::constant(1))
     }
 
-    /// This outputs the field elements corresponding to the public inputs of this predicate.
-    /// This DOES NOT include `attrs`.
+    // 输出与谓词公共输入对应的字段元素。这不包括 `attrs`。
     fn public_inputs(&self) -> Vec<Fr> {
         vec![self.threshold_birth_year]
+    }
+}
+
+// 测试模块
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pred::{gen_pred_crs, prove_pred};
+    use ark_bls12_381::{Bls12_381 as E, Fr};
+    use ark_std::test_rng;
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+
+    // 测试已撤销凭证被谓词拒绝
+    #[test]
+    fn test_revoked_credential_rejected_by_predicate() {
+        let mut rng = test_rng();
+        let mut person = NameAndBirthYear::new(&mut rng, b"Andrew", 1992);
+        person.revoke();
+        assert!(person.is_revoked());
+        assert_eq!(person.status_text(), "凭证已撤销");
+
+        // 生成凭证承诺
+        let person_com = Attrs::<_, TestComSchemePedersen>::commit(&person);
+        let tree_height = 32;
+        let mut tree = crate::com_tree::ComTree::empty(MERKLE_CRH_PARAM.clone(), tree_height);
+        let auth_path = tree.insert(17, &person_com);
+
+        // 生成谓词
+        let age_checker = AgeChecker {
+            threshold_birth_year: Fr::from(2001u16),
+        };
+        // 生成谓词电路的CRS
+        let pk = gen_pred_crs::<
+            _,
+            _,
+            E,
+            _,
+            _,
+            TestComSchemePedersen,
+            TestComSchemePedersenG,
+            TestTreeH,
+            TestTreeHG,
+        >(&mut rng, age_checker.clone())
+        .unwrap();
+
+        // 证明谓词
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            prove_pred(&mut rng, &pk, age_checker, person, &auth_path).unwrap();
+        }));
+        // 断言已撤销凭证应失败谓词证明
+        assert!(result.is_err(), "revoked credential should fail predicate proof");
     }
 }

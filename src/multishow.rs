@@ -30,6 +30,12 @@ pub struct PresentationToken<ConstraintF: PrimeField> {
     hidden_ctr: ConstraintF,
 }
 
+impl<ConstraintF: PrimeField> PresentationToken<ConstraintF> {
+    pub fn hidden_ctr(&self) -> ConstraintF {
+        self.hidden_ctr
+    }
+}
+
 // 可变版本的 presentation token
 #[derive(Clone)]
 pub struct PresentationTokenVar<ConstraintF: PrimeField> {
