@@ -1,9 +1,9 @@
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>ZKCreds Demo Dashboard</title>
+<title>ZKCreds 凭证演示面板</title>
 <style>
 body {
     font-family: Arial, sans-serif;
@@ -67,40 +67,54 @@ textarea, select {
 </style>
 </head>
 <body>
-<header>ZK Credential System - Experiment Dashboard</header>
+<header>ZK 凭证系统 - 实验面板</header>
 <div class="container">
 <div class="panel">
     <div class="card">
-        <h3>Step 1: Input Attributes</h3>
-        <textarea id="attrs" rows="4">{"age":23,"country":"CN","score":650}</textarea>
-        <button onclick="commit()">Generate Commitment</button>
+        <h3>步骤 1：输入属性</h3>
+        <textarea id="attrs" rows="14">{
+  "student_name": "ZHANG_SAN",
+  "employee_name": "ZHANG_SAN",
+  "passport_name": "ZHANG_SAN",
+  "student_school": "UESTC",
+  "expected_school": "UESTC",
+  "employee_company": "ALIBABA_GROUP",
+  "expected_company": "ALIBABA_GROUP",
+  "passport_nationality": "CHN",
+  "expected_nationality": "CHN",
+  "passport_dob": 20000101,
+  "student_card_expiry": 20291231,
+  "employee_card_expiry": 20291231,
+  "passport_expiry": 20300101
+}</textarea>
+        <button onclick="commit()">生成承诺</button>
         <div class="result" id="commitment"></div>
     </div>
 
     <div class="card">
-        <h3>Step 2: Issue Credential</h3>
-        <button onclick="issue()">Issue Credential</button>
-        <button onclick="revoke()">Issuer Revoke Credential</button>
+        <h3>步骤 2：签发凭证</h3>
+        <button onclick="issue()">签发凭证</button>
+        <button onclick="revoke()">发行方撤销凭证</button>
         <div class="result" id="credential"></div>
         <div class="result" id="revokeResult"></div>
     </div>
 
     <div class="card">
-        <h3>Step 3: Merkle Tree</h3>
-        <button onclick="updateMerkle()">Update Merkle Root</button>
+        <h3>步骤 3：更新 Merkle 树</h3>
+        <button onclick="updateMerkle()">更新 Merkle 根</button>
         <div class="result" id="root"></div>
     </div>
 
     <div class="card">
-        <h3>Step 4: Select Auth Scenario and Generate Proof</h3>
+        <h3>步骤 4：选择认证场景并生成证明</h3>
         <select id="scenarioSelect"></select>
-        <button onclick="prove()">Generate Proof (Selected Scenario)</button>
+        <button onclick="prove()">按当前场景生成证明</button>
         <div class="result" id="proof"></div>
     </div>
 
     <div class="card">
-        <h3>Step 5: Verifier Checks Proof</h3>
-        <button onclick="verify()">Verify Current Proof</button>
+        <h3>步骤 5：验证方校验证明</h3>
+        <button onclick="verify()">验证当前证明</button>
         <div class="result" id="verifyResult"></div>
     </div>
 </div>
@@ -145,20 +159,33 @@ async function get(url) {
 }
 
 async function loadScenarios() {
-    try {
-        const res = await get("/api/scenarios");
-        const select = document.getElementById("scenarioSelect");
-        select.innerHTML = "";
-        res.scenarios.forEach((s) => {
-            const option = document.createElement("option");
-            option.value = s.id;
-            option.textContent = `${s.id} - ${s.label}`;
-            select.appendChild(option);
-        });
-        log(`Loaded ${res.scenarios.length} authentication scenarios`);
-    } catch (err) {
-        log("Load scenarios failed: " + err.message);
-    }
+    const scenarios = [
+        {
+            id: "student_employee",
+            label: "学生-员工：校企合作",
+            description: "姓名一致 + 学校/公司匹配 + 学生证/工卡有效期",
+        },
+        {
+            id: "passport_student",
+            label: "护照-学生：国际优惠",
+            description: "姓名一致 + 国籍匹配 + 年龄门槛 + 护照/学生证有效期",
+        },
+        {
+            id: "passport_employee",
+            label: "护照-员工：跨境商务",
+            description: "姓名一致 + 公司匹配 + 护照/工卡有效期",
+        },
+    ];
+
+    const select = document.getElementById("scenarioSelect");
+    select.innerHTML = "";
+    scenarios.forEach((s) => {
+        const option = document.createElement("option");
+        option.value = s.id;
+        option.textContent = `${s.label}（${s.description}）`;
+        select.appendChild(option);
+    });
+    log(`Loaded ${scenarios.length} authentication scenarios`);
 }
 
 async function commit() {
@@ -166,14 +193,14 @@ async function commit() {
         const attrsInput = document.getElementById("attrs").value.trim();
         const attrs = attrsInput ? JSON.parse(attrsInput) : {};
         const res = await post("/api/commit", { attrs });
-        showResult("commitment", `Commitment: ${res.commitment}`, "ok");
+        showResult("commitment", `承诺值：${res.commitment}`, "ok");
         showResult("credential", "");
         showResult("proof", "");
         showResult("verifyResult", "");
         showResult("revokeResult", "");
         log("Commitment generated: " + res.commitment);
     } catch (err) {
-        showResult("commitment", "Error: " + err.message, "warn");
+        showResult("commitment", "错误：" + err.message, "warn");
         log("Commitment failed: " + err.message);
     }
 }
@@ -181,11 +208,11 @@ async function commit() {
 async function issue() {
     try {
         const res = await post("/api/issue", {});
-        showResult("credential", `Credential: ${res.credential}`, "ok");
-        showResult("revokeResult", "Credential active (not revoked)", "ok");
+        showResult("credential", `凭证：${res.credential}`, "ok");
+        showResult("revokeResult", "凭证状态：有效（未撤销）", "ok");
         log("Credential issued: " + res.credential);
     } catch (err) {
-        showResult("credential", "Error: " + err.message, "warn");
+        showResult("credential", "错误：" + err.message, "warn");
         log("Issue failed: " + err.message);
     }
 }
@@ -193,10 +220,10 @@ async function issue() {
 async function revoke() {
     try {
         const res = await post("/api/revoke", {});
-        showResult("revokeResult", `${res.message}: ${res.credential}`, "warn");
+        showResult("revokeResult", `撤销结果：${res.message}（${res.credential}）`, "warn");
         log("Issuer revoked credential: " + res.credential);
     } catch (err) {
-        showResult("revokeResult", "Error: " + err.message, "warn");
+        showResult("revokeResult", "错误：" + err.message, "warn");
         log("Revoke failed: " + err.message);
     }
 }
@@ -204,10 +231,10 @@ async function revoke() {
 async function updateMerkle() {
     try {
         const res = await post("/api/merkle", {});
-        showResult("root", `Merkle Root: ${res.root}`, "ok");
+        showResult("root", `Merkle 根：${res.root}`, "ok");
         log("Merkle root updated: " + res.root);
     } catch (err) {
-        showResult("root", "Error: " + err.message, "warn");
+        showResult("root", "错误：" + err.message, "warn");
         log("Merkle update failed: " + err.message);
     }
 }
@@ -220,7 +247,7 @@ async function prove() {
         showResult("proof", readable, "ok");
         log(`Proof generated for scenario ${res.scenario}`);
     } catch (err) {
-        showResult("proof", "Error: " + err.message, "warn");
+        showResult("proof", "错误：" + err.message, "warn");
         log("Proof failed: " + err.message);
     }
 }
@@ -228,11 +255,11 @@ async function prove() {
 async function verify() {
     try {
         const res = await post("/api/verify", {});
-        const readable = `result=${res.result}\nreason=${res.reason}\nscenario=${res.scenario}\ncredential=${res.credential}`;
+        const readable = `验证结果=${res.result}\n原因=${res.reason}\n场景=${res.scenario}\n凭证=${res.credential}`;
         showResult("verifyResult", readable, res.result ? "ok" : "warn");
         log(`Verification result: ${res.result} (${res.reason})`);
     } catch (err) {
-        showResult("verifyResult", "Error: " + err.message, "warn");
+        showResult("verifyResult", "错误：" + err.message, "warn");
         log("Verify failed: " + err.message);
     }
 }

@@ -1,5 +1,4 @@
-//! Defines a trait that allows service providers to implement rate limiting on their services.
-//! If the user exceeds the limit, it will have deanonymized itself.
+//! 定义一个trait，允许服务提供者对其服务实现速率限制。如果用户超过了这个限制，它将会去匿名化。
 
 use crate::{
     attrs::{AccountableAttrs, AccountableAttrsVar},
@@ -21,43 +20,39 @@ use ark_relations::{
 use arkworks_native_gadgets::poseidon::{FieldHasher, Poseidon, PoseidonParameters};
 use arkworks_r1cs_gadgets::poseidon::{FieldHasherGadget, PoseidonGadget, PoseidonParametersVar};
 
-// Domain separators for all our uses of Poseidon
+// 所有使用Poseidon的域分隔符
 const PRF1_DOMAIN_SEP: u8 = 123;
 const PRF2_DOMAIN_SEP: u8 = 124;
 const HASH_DOMAIN_SEP: u8 = 125;
 
-/// A pseudorandom pair of field elements. If there are ever two tokens with the same `hidden_ctr`,
-/// they can be combined to derive the (hash of the) user's ID.
+// 字段元素的伪随机对如果有两个具有相同`hidden_ctr`的token，则可以将它们组合起来以获得用户ID的（哈希）。
 #[derive(Clone, Default)]
 pub struct PresentationToken<ConstraintF: PrimeField> {
-    /// This is `PRFₛ(epoch || ctr)` where s is the seed
+    // This is `PRFₛ(epoch || ctr)` where s is the seed
     hidden_ctr: ConstraintF,
 
-    /// This is `H(ID) + H(n)·PRFₛ'(epoch || ctr)` where `ID` is the user ID, s is the seed, and n
-    /// is the presentation nonce. Notice that if `ctr` repeats within an epoch then we have two
-    /// elements on the line `H(ID) + x·PRFₛ'(epoch || ctr)`. An observer can solve for the
-    /// y-intercept and recover `H(ID)`.
+    // 这是`H(ID) + H(n)·PRFₛ` (epoch || ctr)`，其中`ID`是用户ID， s是种子，n是表示nonce。
+    // 请注意，如果`ctr`在一个epoch内重复，那么我们在`H(ID) + x·PRFₛ` (epoch || ctr)`上有两个元素。
+    // 观察者可以求出y轴截距并恢复`H(ID)`。
     hidden_line_point: ConstraintF,
 }
 
-/// The variable version of presentation token
+// 可变版本的presentation token
 #[derive(Clone)]
 pub struct PresentationTokenVar<ConstraintF: PrimeField> {
     hidden_ctr: FpVar<ConstraintF>,
     hidden_line_point: FpVar<ConstraintF>,
 }
 
-/// This trait allows a user to create a "presentation token" every time they show their
-/// credential. This can be used for rate limiting if the verifier requires that `ctr` is bounded
-/// for every `epoch`. When `ctr` repeats within an epoch, the presentation token will reveal the
-/// `id` value of the associated [`AccountableAttrs`].
+// 这个特性允许用户每次展示他们的凭据时创建一个 "presentation token"。如果验证者要求 `ctr` 有界，则可以用于速率限制。
+// 当 `ctr` 在一个epoch内重复，presentation token将揭示相关 [`AccountableAttrs`] 的 `id` 值。
 pub trait MultishowableAttrs<ConstraintF, AC>
 where
     ConstraintF: PrimeField,
     AC: CommitmentScheme,
     AC::Output: ToConstraintField<ConstraintF>,
 {
-    /// Computes the presentation token from the given accountable attribute
+    // 从给定的可问责属性计算 presentation token
     fn compute_presentation_token(
         &self,
         params: PoseidonParameters<ConstraintF>,
@@ -74,7 +69,7 @@ where
     AC: CommitmentScheme,
     AC::Output: ToConstraintField<ConstraintF>,
 {
-    /// Computes the presentation token from the given accountable attribute
+    // 从给定的可问责属性计算 presentation token
     fn compute_presentation_token(
         &self,
         params: PoseidonParameters<ConstraintF>,
@@ -145,7 +140,7 @@ where
     }
 }
 
-/// Implements `compute_presentation_token` for all AccountableAttrsVar
+// 实现 `compute_presentation_token` 对于所有 AccountableAttrsVar
 pub trait MultishowableAttrsVar<ConstraintF, A, AC, ACG>
 where
     ConstraintF: PrimeField,
@@ -154,7 +149,7 @@ where
     AC::Output: ToConstraintField<ConstraintF>,
     ACG: CommitmentGadget<AC, ConstraintF>,
 {
-    /// Computes the presentation token from the given accountable attribute
+    // 从给定的可问责属性计算 presentation token
     fn compute_presentation_token(
         &self,
         params: PoseidonParametersVar<ConstraintF>,
@@ -164,7 +159,7 @@ where
     ) -> Result<PresentationTokenVar<ConstraintF>, SynthesisError>;
 }
 
-/// Implements `compute_presentation_token` for all AccountableAttrsVar
+// 实现 `compute_presentation_token` 对于所有 AccountableAttrsVar
 impl<ConstraintF, A, AV, AC, ACG> MultishowableAttrsVar<ConstraintF, A, AC, ACG> for AV
 where
     ConstraintF: PrimeField,
@@ -174,7 +169,7 @@ where
     AC::Output: ToConstraintField<ConstraintF>,
     ACG: CommitmentGadget<AC, ConstraintF>,
 {
-    /// Computes the presentation token from the given accountable attribute
+    // 从给定的可问责属性计算 presentation token
     fn compute_presentation_token(
         &self,
         params: PoseidonParametersVar<ConstraintF>,
@@ -247,30 +242,28 @@ where
     }
 }
 
-/// Proves that `token` is the result of a PRF computation using the verifier-provided nonce and
-/// the attribute's ID and random seed
+// 证明 `token` 是使用验证者提供的 nonce 和属性 ID 以及随机种子进行 PRF 计算的结果
 #[derive(Clone, Default)]
 pub struct RevealingMultishowChecker<ConstraintF>
 where
     ConstraintF: PrimeField,
 {
-    // Public inputs //
-    /// The psuedorandom values associated with this presentation
+    // 公共输入 //
+    // 与这个展示相关的伪随机值
     pub token: PresentationToken<ConstraintF>,
-    // The current show epoch
+    // 当前展示的 epoch
     pub epoch: u64,
-    // The nonce provided by the server
+    // 服务器提供的 nonce
     pub nonce: ConstraintF,
-    /// Number of times this attrribute string can be shown
+    // 这个属性字符串可以展示的次数
     pub max_num_presentations: u16,
 
-    // Private inputs //
-    /// The counter representing the number of times this attribute string has been shown so far
-    /// (begins at 0)
+    // 私有输入 //
+    // 表示这个属性字符串已经展示的次数的计数器（从 0 开始）
     pub ctr: u16,
 
-    // Constants //
-    /// Poseidon parameters
+    // 常量 //
+    // Poseidon parameters
     pub params: PoseidonParameters<ConstraintF>,
 }
 
@@ -284,7 +277,7 @@ where
     ACG: CommitmentGadget<AC, ConstraintF>,
     AC::Output: ToConstraintField<ConstraintF>,
 {
-    /// Returns whether or not the predicate was satisfied
+    // 返回是否满足谓词
     fn pred(self, cs: ConstraintSystemRef<ConstraintF>, attrs: &AV) -> Result<(), SynthesisError> {
         // Witness the Poseidon params
         let params = PoseidonParametersVar::new_constant(ns!(cs, "prf param"), &self.params)?;
@@ -321,12 +314,10 @@ where
             .hidden_line_point
             .enforce_equal(&hidden_line_point)?;
 
-        // All done
         Ok(())
     }
 
-    /// This outputs the field elements corresponding to the public inputs of this predicate.
-    /// This DOES NOT include `attrs`.
+    // 输出与这个谓词的公共输入对应的字段元素。这 DOES NOT 包括 `attrs`。
     fn public_inputs(&self) -> Vec<ConstraintF> {
         vec![
             self.epoch.into(),
@@ -361,7 +352,7 @@ mod test {
     fn test_revealing_multishow() {
         let mut rng = ark_std::test_rng();
 
-        // Set up the public parameters
+        // 设置公共参数
         let params = setup_poseidon_params(Curve::Bls381, 3, POSEIDON_WIDTH);
         let epoch = 5;
         let max_num_presentations: u16 = 128;
@@ -384,7 +375,7 @@ mod test {
 
         let person = NameAndBirthYear::new(&mut rng, b"Andrew", 1992);
 
-        // User computes a multishow token
+        // 用户计算一个multishow token
         let nonce = Fr::rand(&mut rng);
         let ctr: u16 = 1;
         let token = MultishowableAttrs::<_, TestComSchemePedersen>::compute_presentation_token(
@@ -396,7 +387,7 @@ mod test {
         )
         .unwrap();
 
-        // User constructs a checker for their predicate
+        // 用户构造一个谓词的检查器
         let users_checker = RevealingMultishowChecker {
             token: token.clone(),
             epoch,
@@ -406,11 +397,11 @@ mod test {
             params: params.clone(),
         };
 
-        // Prove the predicate
+        // 证明谓词
         let proof = prove_birth(&mut rng, &pk, users_checker, person.clone()).unwrap();
 
-        // Now verify the predicate
-        // Make the checker with only the public data
+        // 验证谓词
+        // 只用公共数据制作检查器
         let verifiers_checker = RevealingMultishowChecker {
             token,
             epoch,

@@ -1,4 +1,4 @@
-//! Some helpful utilities for making zero-knowledge circuits in arkworks
+//! 用于在 arkworks 中制作零知识电路的实用工具
 
 use core::{borrow::Borrow, marker::PhantomData};
 
@@ -19,10 +19,9 @@ use ark_r1cs_std::{
 use ark_relations::r1cs::{ConstraintSystemRef, Namespace, SynthesisError};
 use ark_std::rand::Rng;
 
-/// This CRH is the identity function on its input
+// 这个CRH是输入的恒等函数
 pub struct IdentityCRH;
 impl CRH for IdentityCRH {
-    /// This value doesn't matter. We return everything no matter what
     const INPUT_SIZE_BITS: usize = 0;
 
     type Output = Vec<u8>;
@@ -32,22 +31,22 @@ impl CRH for IdentityCRH {
         Ok(())
     }
 
-    /// Returns the input
+    // 返回输入
     fn evaluate(_parameters: &Self::Parameters, input: &[u8]) -> Result<Self::Output, ArkError> {
         Ok(input.to_vec())
     }
 }
 
-/// This CRH is the identity function in its input
+// 这个CRH是输入的恒等函数
 pub struct IdentityCRHGadget;
 impl<ConstraintF: PrimeField> CRHGadget<IdentityCRH, ConstraintF> for IdentityCRHGadget {
-    /// A `Bytestring` is just a wrapper around `Vec<UInt8<F>>`
+    // `Bytestring` 只是一个 `Vec<UInt8<F>>` 的包装器
     type OutputVar = Bytestring<ConstraintF>;
 
-    /// A `UnitVar` is literally the unit type, in variable form
+    // `UnitVar` 是变量形式的单位类型
     type ParametersVar = UnitVar<ConstraintF>;
 
-    /// Returns the input
+    // 返回输入
     fn evaluate(
         _parameters: &Self::ParametersVar,
         input: &[UInt8<ConstraintF>],
@@ -56,7 +55,7 @@ impl<ConstraintF: PrimeField> CRHGadget<IdentityCRH, ConstraintF> for IdentityCR
     }
 }
 
-/// The unit type for circuit variables. This contains no data.
+// 电路变量的单位类型
 #[derive(Clone, Debug, Default)]
 pub struct UnitVar<ConstraintF: PrimeField>(PhantomData<ConstraintF>);
 
@@ -70,31 +69,35 @@ impl<ConstraintF: PrimeField> AllocVar<(), ConstraintF> for UnitVar<ConstraintF>
     }
 }
 
-/// This type is the output of the `IdentityCRH`. It's just a `Vec<UInt8<F>>`. The reason we have
-/// to make a newtype is because `Vec<UInt8<F>>` doesn't implement `EqGadget` or `AllocVar`.
+// 这个类型是 `IdentityCRH` 的输出
+// 它只是一个 `Vec<UInt8<F>>`
+// 我们为什么需要一个新的类型是因为 `Vec<UInt8<F>>` 没有实现 `EqGadget` 或 `AllocVar`
 #[derive(Clone, Debug)]
 pub struct Bytestring<ConstraintF: PrimeField>(pub Vec<UInt8<ConstraintF>>);
 
-// Implement all the necessary traits below
-
+// 实现所有必要的特征
+// 实现 `EqGadget` 特征
 impl<ConstraintF: PrimeField> EqGadget<ConstraintF> for Bytestring<ConstraintF> {
     fn is_eq(&self, other: &Self) -> Result<Boolean<ConstraintF>, SynthesisError> {
         self.0.as_slice().is_eq(other.0.as_slice())
     }
 }
 
+// 实现 `ToBytesGadget` 特征
 impl<ConstraintF: PrimeField> ToBytesGadget<ConstraintF> for Bytestring<ConstraintF> {
     fn to_bytes(&self) -> Result<Vec<UInt8<ConstraintF>>, SynthesisError> {
         Ok(self.0.clone())
     }
 }
 
+// 实现 `ToConstraintFieldGadget` 特征
 impl<ConstraintF: PrimeField> ToConstraintFieldGadget<ConstraintF> for Bytestring<ConstraintF> {
     fn to_constraint_field(&self) -> Result<Vec<FpVar<ConstraintF>>, SynthesisError> {
         self.0.to_constraint_field()
     }
 }
 
+// 实现 `CondSelectGadget` 特征
 impl<ConstraintF: PrimeField> CondSelectGadget<ConstraintF> for Bytestring<ConstraintF> {
     fn conditionally_select(
         cond: &Boolean<ConstraintF>,
@@ -113,9 +116,9 @@ impl<ConstraintF: PrimeField> CondSelectGadget<ConstraintF> for Bytestring<Const
     }
 }
 
+// 实现 `AllocVar` 特征
 impl<ConstraintF: PrimeField> AllocVar<Vec<u8>, ConstraintF> for Bytestring<ConstraintF> {
-    // Allocates a vector of UInt8s. This panics if `f()` is `Err`, since we don't know how many
-    // bytes to allocate
+    // 分配一个UInt8向量。如果`f()`是`Err`，则会发生panic，因为我们不知道要分配多少字节
     fn new_variable<T: Borrow<Vec<u8>>>(
         cs: impl Into<Namespace<ConstraintF>>,
         f: impl FnOnce() -> Result<T, SynthesisError>,
@@ -134,6 +137,7 @@ impl<ConstraintF: PrimeField> AllocVar<Vec<u8>, ConstraintF> for Bytestring<Cons
     }
 }
 
+// 实现 `R1CSVar` 特征
 impl<ConstraintF: PrimeField> R1CSVar<ConstraintF> for Bytestring<ConstraintF> {
     type Value = Vec<u8>;
 
