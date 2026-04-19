@@ -168,6 +168,12 @@ impl NameAndBirthYear {
         }
     }
 
+    pub fn new_with_seed<R: Rng>(rng: &mut R, first_name: &[u8], birth_year: u16, seed: Fr) -> NameAndBirthYear {
+        let mut attrs = Self::new(rng, first_name, birth_year);
+        attrs.seed = seed;
+        attrs
+    }
+
     // 返回当前凭证状态的可读性字符串
     pub fn status_text(&self) -> &'static str {
         if self.status {
@@ -267,7 +273,6 @@ impl AttrsVar<Fr, NameAndBirthYear, TestComSchemePedersen, TestComSchemePedersen
             .or(self.status.cs())
     }
 
-    // Allocates a vector of UInt8s. This panics if `f()` is `Err`, since we don't know how many
     // 分配一个UInt8向量。如果`f()`是`Err`，则会发生panic，因为我们不知道要分配多少字节
     fn witness_attrs(
         cs: impl Into<Namespace<Fr>>,
@@ -335,7 +340,6 @@ impl AttrsVar<Fr, NameAndBirthYear, Bls12PoseidonCommitter, Bls12PoseidonCommitt
             .or(self.status.cs())
     }
 
-    // Allocates a vector of UInt8s. This panics if `f()` is `Err`, since we don't know how many
     // 分配一个UInt8向量。如果`f()`是`Err`，则会发生panic，因为我们不知道要分配多少字节
     fn witness_attrs(
         cs: impl Into<Namespace<Fr>>,
@@ -401,7 +405,6 @@ impl AccountableAttrsVar<Fr, NameAndBirthYear, Bls12PoseidonCommitter, Bls12Pose
 }
 
 // 定义一个谓词，用于判断给定的`NameAndBirthYear`是否至少为X岁。谓词是：attrs.birth_year ≤ self.threshold_birth_year
-// old. The predicate is: attrs.birth_year ≤ self.threshold_birth_year
 #[derive(Clone)]
 pub struct AgeChecker {
     pub threshold_birth_year: Fr,
