@@ -55,7 +55,7 @@ impl pedersen::Window for Window8x63 {
 pub struct Window8x128;
 impl pedersen::Window for Window8x128 {
     const WINDOW_SIZE: usize = 128;
-    const NUM_WINDOWS: usize = 8;
+    const NUM_WINDOWS: usize = 10;
 }
 
 #[derive(Clone)]
@@ -136,6 +136,12 @@ pub struct NameAndBirthYear {
     first_name: [u8; NAME_MAXLEN],
     birth_year: Fr,
     status: bool,
+}
+
+impl NameAndBirthYear {
+    pub fn first_name(&self) -> &[u8] {
+        &self.first_name
+    }
 }
 
 // 定义一个结构体，表示一个人的姓名和出生年份的变量

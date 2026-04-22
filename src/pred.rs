@@ -4,6 +4,7 @@ use crate::{
     attrs::{Attrs, AttrsVar},
     com_tree::ComTreePath,
     proof_data_structures::{PredProof, PredProvingKey, PredPublicInput, PredVerifyingKey},
+    zk_utils::count_constraints,
 };
 
 use core::marker::PhantomData;
@@ -128,6 +129,56 @@ where
     // 制作一个默认的com树路径，不需要指定长度，因为只使用占位符根值
     let auth_path = ComTreePath::default();
     prove_pred(rng, pk, checker, attrs, &auth_path)
+}
+
+pub fn count_pred_constraints<P, E, A, AV, AC, ACG, H, HG>(
+    pk: &PredProvingKey<E, A, AV, AC, ACG, H, HG>,
+    checker: P,
+    attrs: A,
+    auth_path: &ComTreePath<E::Fr, H, AC>,
+) -> Result<(usize, usize, usize), SynthesisError>
+where
+    P: PredicateChecker<E::Fr, A, AV, AC, ACG>,
+    E: PairingEngine,
+    A: Attrs<E::Fr, AC>,
+    AV: AttrsVar<E::Fr, A, AC, ACG>,
+    AC: CommitmentScheme,
+    ACG: CommitmentGadget<AC, E::Fr>,
+    AC::Output: ToConstraintField<E::Fr>,
+    H: TwoToOneCRH,
+    H::Output: ToConstraintField<E::Fr>,
+    HG: TwoToOneCRHGadget<H, E::Fr>,
+{
+    let merkle_root = auth_path.path.root.clone();
+    let prover: PredicateProver<_, _, _, _, _, _, _, HG> = PredicateProver {
+        checker,
+        attrs,
+        merkle_root,
+        _marker: PhantomData,
+    };
+
+    count_constraints(prover)
+}
+
+pub fn count_birth_constraints<P, E, A, AV, AC, ACG, H, HG>(
+    pk: &PredProvingKey<E, A, AV, AC, ACG, H, HG>,
+    checker: P,
+    attrs: A,
+) -> Result<(usize, usize, usize), SynthesisError>
+where
+    P: PredicateChecker<E::Fr, A, AV, AC, ACG>,
+    E: PairingEngine,
+    A: Attrs<E::Fr, AC>,
+    AV: AttrsVar<E::Fr, A, AC, ACG>,
+    AC: CommitmentScheme,
+    ACG: CommitmentGadget<AC, E::Fr>,
+    AC::Output: ToConstraintField<E::Fr>,
+    H: TwoToOneCRH,
+    H::Output: ToConstraintField<E::Fr>,
+    HG: TwoToOneCRHGadget<H, E::Fr>,
+{
+    let auth_path = ComTreePath::default();
+    count_pred_constraints(pk, checker, attrs, &auth_path)
 }
 
 // 验证谓词证明

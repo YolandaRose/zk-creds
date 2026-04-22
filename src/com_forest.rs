@@ -4,6 +4,7 @@ use crate::{
     attrs::Attrs,
     com_tree::ComTree,
     proof_data_structures::{ForestProof, ForestProvingKey, ForestVerifyingKey},
+    zk_utils::count_constraints,
 };
 
 use core::marker::PhantomData;
@@ -138,6 +139,29 @@ where
             proof,
             _marker: PhantomData,
         })
+    }
+
+    pub fn count_membership_constraints<E, A, AC, ACG, HG>(
+        &self,
+        member_root: H::Output,
+        attrs_com: AC::Output,
+    ) -> Result<(usize, usize, usize), SynthesisError>
+    where
+        E: PairingEngine<Fr = ConstraintF>,
+        A: Attrs<E::Fr, AC>,
+        AC: CommitmentScheme,
+        ACG: CommitmentGadget<AC, E::Fr>,
+        AC::Output: ToConstraintField<ConstraintF>,
+        HG: TwoToOneCRHGadget<H, E::Fr>,
+    {
+        let prover = ForestMembershipProver::<E::Fr, AC, ACG, H, HG> {
+            roots: self.roots.clone(),
+            attrs_com,
+            member_root,
+            _marker: PhantomData,
+        };
+
+        count_constraints(prover)
     }
 }
 

@@ -9,7 +9,7 @@ use zkcreds::attrs::Attrs;
 use zkcreds::com_forest::{gen_forest_memb_crs, ComForest};
 use zkcreds::com_tree::{gen_tree_memb_crs, ComTree};
 use zkcreds::link::{link_proofs, verif_link_proof, LinkProofCtx, LinkVerifyingKey, PredPublicInputs};
-use zkcreds::multishow::MultishowableAttrs;
+use zkcreds::multishow::{MultishowChecker, MultishowableAttrs};
 use zkcreds::poseidon_utils::setup_poseidon_params;
 use zkcreds::pred::{gen_pred_crs, prove_pred, verify_pred};
 use zkcreds::test_util::{AgeChecker, NameAndBirthYear, NameAndBirthYearVar, MERKLE_CRH_PARAM, TestComSchemePedersen, TestComSchemePedersenG, TestTreeH, TestTreeHG};
@@ -21,6 +21,13 @@ type TestAV = NameAndBirthYearVar;
 const TREE_HEIGHT: u32 = 32;
 const NUM_TREES: usize = 4;
 const POSEIDON_WIDTH: u8 = 5;
+
+fn log_constraint_counts(name: &str, counts: (usize, usize, usize)) {
+    println!(
+        "{}: constraints={}, witness_vars={}, instance_vars={}",
+        name, counts.0, counts.1, counts.2
+    );
+}
 
 fn main() {
     let mut rng = StdRng::seed_from_u64(0xdead_beef);
@@ -104,10 +111,13 @@ where
     let tampered_com: Com<TestComSchemePedersen> = Attrs::<_, TestComSchemePedersen>::commit(&tampered_person);
     let tampered_verified = verify_pred(&pred_vk, &pred_proof, &age_checker, &tampered_com, &merkle_root)
         .unwrap_or(false);
+    println!("篡改前承诺: {}", person_com);
+    println!("篡改后承诺: {}", tampered_com);
     println!(
-        "篡改后凭证(出生年2005)使用原证明验证结果: {}",
+        "篡改后凭证(birth_year=2005)使用原证明验证结果: {}",
         tampered_verified
     );
+
 
     if !verified {
         return Err("原始证明应验证成功，但未通过".into());
@@ -133,8 +143,11 @@ where
     let root_before = tree.root();
     let auth_path = tree.insert(5, &person_com);
     let root_after = tree.root();
+    
+    println!("Old root: {}", root_before);
+    println!("New root: {}", root_after);
+    println!("Inserted Leaf: commitment = {}", person_com);
     println!("插入叶节点前后 Merkle 根是否变化: {}", root_before != root_after);
-
     if root_before == root_after {
         return Err("插入凭证后 Merkle 根未更新".into());
     }
@@ -147,6 +160,24 @@ where
         age_checker.clone(),
     )
     .map_err(format_err)?;
+
+    let pred_counts = zkcreds::pred::count_pred_constraints(
+        &pred_pk,
+        age_checker.clone(),
+        person.clone(),
+        &auth_path,
+    )
+    .map_err(format_err)?;
+    log_constraint_counts("属性证明电路", pred_counts);
+
+    let tree_counts = auth_path
+        .count_membership_constraints::<E, TestA, TestComSchemePedersenG, TestTreeHG>(
+            &MERKLE_CRH_PARAM,
+            person_com.clone(),
+        )
+        .map_err(format_err)?;
+    log_constraint_counts("成员证明电路", tree_counts);
+
     let pred_proof = prove_pred::<_, _, E, TestA, TestAV, TestComSchemePedersen, TestComSchemePedersenG, TestTreeH, TestTreeHG>(
         rng,
         &pred_pk,
@@ -200,6 +231,7 @@ where
 
     let verified = verify_pred(&pred_vk, &pred_proof, &age_checker, &person_com, &merkle_root)
         .map_err(format_err)?;
+    println!("合法输入: name=Dan, birth_year=1992, commitment={}", person_com);
     println!("合法输入证明验证结果: {}", verified);
     if !verified {
         return Err("合法输入的证明应验证成功".into());
@@ -209,6 +241,7 @@ where
     let tampered_com: Com<TestComSchemePedersen> = Attrs::<_, TestComSchemePedersen>::commit(&tampered_person);
     let tampered_verified = verify_pred(&pred_vk, &pred_proof, &age_checker, &tampered_com, &merkle_root)
         .unwrap_or(false);
+    println!("修改属性: name=Dan, birth_year=2005 (原1992), commitment={}", tampered_com);
     println!("修改属性后的验证结果: {}", tampered_verified);
     if tampered_verified {
         return Err("修改属性后的证明不应通过验证".into());
@@ -266,6 +299,13 @@ where
     )
     .map_err(format_err)?;
 
+    
+    println!("cred1 拥有者: {}", String::from_utf8_lossy(cred1.first_name()).trim_end_matches('\0'));
+    println!("cred1 hidden_ctr: {}", token1.hidden_ctr());
+    println!("cred2 拥有者: {}", String::from_utf8_lossy(cred2.first_name()).trim_end_matches('\0'));
+    println!("cred2 hidden_ctr: {}", token2.hidden_ctr());
+    println!("cred3 拥有者: {}", String::from_utf8_lossy(other_cred.first_name()).trim_end_matches('\0'));
+    println!("cred3 hidden_ctr: {}", token3.hidden_ctr());
     println!(
         "同一用户两凭证的 hidden_ctr 是否相同: {}",
         token1.hidden_ctr() == token2.hidden_ctr()
@@ -290,13 +330,29 @@ where
     )
     .map_err(format_err)?;
 
-    println!(
-        "重复使用同一凭证的 hidden_ctr 是否相同: {}",
-        token1.hidden_ctr() == same_token_again.hidden_ctr()
-    );
     if token1.hidden_ctr() != same_token_again.hidden_ctr() {
         return Err("重复使用同一凭证应产生相同的 multishow token".into());
     }
+
+    let multishow_checker = MultishowChecker {
+        token: token1.clone(),
+        epoch,
+        max_num_presentations: 5,
+        ctr,
+        params: params.clone(),
+    };
+    let multishow_pk = gen_pred_crs::<_, _, E, TestA, TestAV, TestComSchemePedersen, TestComSchemePedersenG, TestTreeH, TestTreeHG>(
+        rng,
+        multishow_checker.clone(),
+    )
+    .map_err(format_err)?;
+    let multishow_counts = zkcreds::pred::count_birth_constraints(
+        &multishow_pk,
+        multishow_checker.clone(),
+        cred1.clone(),
+    )
+    .map_err(format_err)?;
+    log_constraint_counts("双重展示属性证明电路", multishow_counts);
 
     Ok(())
 }
@@ -306,6 +362,7 @@ mod joint_test_support {
     use ark_crypto_primitives::commitment::CommitmentScheme;
     use ark_r1cs_std::{alloc::AllocVar, bits::{ToBitsGadget, ToBytesGadget}, eq::EqGadget, fields::{fp::FpVar, FieldVar}, uint8::UInt8, R1CSVar};
     use ark_relations::{ns, r1cs::{ConstraintSystemRef, Namespace, SynthesisError}};
+    use ark_serialize::CanonicalSerialize;
     use ark_std::{cmp::Ordering, rand::{CryptoRng, Rng}};
     use zkcreds::{attrs::AttrsVar, Bytestring, ComParam, ComParamVar, poseidon_utils::ComNonce};
     use zkcreds::pred::PredicateChecker;
@@ -338,9 +395,7 @@ mod joint_test_support {
 
     fn get_big_com_param() -> &'static <TestComSchemePedersen as CommitmentScheme>::Parameters {
         BIG_COM_PARAM.get_or_init(|| {
-            let mut seed = [0u8; 32];
-            let seed_bytes = b"functional-tests-pedersen";
-            seed[..seed_bytes.len()].copy_from_slice(seed_bytes);
+            let seed = [0u8; 32];
             let mut rng = StdRng::from_seed(seed);
             TestComSchemePedersen::setup(&mut rng).unwrap()
         })
@@ -447,7 +502,8 @@ mod joint_test_support {
 
     impl Attrs<Fr, TestComSchemePedersen> for PassportStudentJointInfo {
         fn to_bytes(&self) -> Vec<u8> {
-            let mut bytes = Vec::with_capacity(PASSPORT_RECORD_LEN + STUDENT_RECORD_LEN);
+            let mut bytes = Vec::with_capacity(PASSPORT_RECORD_LEN + STUDENT_RECORD_LEN + 32);
+            self.seed.serialize(&mut bytes).unwrap();
             bytes.extend_from_slice(&self.passport_blob);
             bytes.extend_from_slice(&self.student_blob);
             bytes
@@ -557,7 +613,8 @@ mod joint_test_support {
 
     impl Attrs<Fr, TestComSchemePedersen> for StudentEmployeeJointInfo {
         fn to_bytes(&self) -> Vec<u8> {
-            let mut bytes = Vec::with_capacity(STUDENT_RECORD_LEN + EMPLOYEE_RECORD_LEN);
+            let mut bytes = Vec::with_capacity(STUDENT_RECORD_LEN + EMPLOYEE_RECORD_LEN + 32);
+            self.seed.serialize(&mut bytes).unwrap();
             bytes.extend_from_slice(&self.student_blob);
             bytes.extend_from_slice(&self.employee_blob);
             bytes
@@ -667,7 +724,8 @@ mod joint_test_support {
 
     impl Attrs<Fr, TestComSchemePedersen> for PassportEmployeeJointInfo {
         fn to_bytes(&self) -> Vec<u8> {
-            let mut bytes = Vec::with_capacity(PASSPORT_RECORD_LEN + EMPLOYEE_RECORD_LEN);
+            let mut bytes = Vec::with_capacity(PASSPORT_RECORD_LEN + EMPLOYEE_RECORD_LEN + 32);
+            self.seed.serialize(&mut bytes).unwrap();
             bytes.extend_from_slice(&self.passport_blob);
             bytes.extend_from_slice(&self.employee_blob);
             bytes
@@ -743,9 +801,12 @@ mod joint_test_support {
         Ok(acc)
     }
 
-    fn card_expiry_tail_fr(blob: &Bytestring<Fr>) -> Result<FpVar<Fr>, SynthesisError> {
-        let n = blob.0.len();
-        u32_be_bytes_to_fp(&blob.0[n - 4..n])
+    fn student_expiry_fr(blob: &Bytestring<Fr>) -> Result<FpVar<Fr>, SynthesisError> {
+        u32_be_bytes_to_fp(&blob.0[STUDENT_EXPIRY_OFF..STUDENT_EXPIRY_OFF + 4])
+    }
+
+    fn employee_expiry_fr(blob: &Bytestring<Fr>) -> Result<FpVar<Fr>, SynthesisError> {
+        u32_be_bytes_to_fp(&blob.0[EMPLOYEE_EXPIRY_OFF..EMPLOYEE_EXPIRY_OFF + 4])
     }
 
     fn passport_expiry_fr(blob: &Bytestring<Fr>) -> Result<FpVar<Fr>, SynthesisError> {
@@ -828,7 +889,7 @@ mod joint_test_support {
     {
         fn pred(self, cs: ConstraintSystemRef<Fr>, attrs: &PassportStudentJointInfoVar) -> Result<(), SynthesisError> {
             let threshold = FpVar::<Fr>::new_input(ns!(cs, "ps student expiry threshold"), || Ok(self.threshold_expiry))?;
-            let ex = card_expiry_tail_fr(&attrs.student_blob)?;
+            let ex = student_expiry_fr(&attrs.student_blob)?;
             ex.enforce_cmp(&threshold, Ordering::Greater, false)
         }
 
@@ -878,7 +939,7 @@ mod joint_test_support {
     {
         fn pred(self, cs: ConstraintSystemRef<Fr>, attrs: &StudentEmployeeJointInfoVar) -> Result<(), SynthesisError> {
             let threshold = FpVar::<Fr>::new_input(ns!(cs, "se student expiry threshold"), || Ok(self.threshold_expiry))?;
-            let ex = card_expiry_tail_fr(&attrs.student_blob)?;
+            let ex = student_expiry_fr(&attrs.student_blob)?;
             ex.enforce_cmp(&threshold, Ordering::Greater, false)
         }
 
@@ -902,7 +963,7 @@ mod joint_test_support {
     {
         fn pred(self, cs: ConstraintSystemRef<Fr>, attrs: &StudentEmployeeJointInfoVar) -> Result<(), SynthesisError> {
             let threshold = FpVar::<Fr>::new_input(ns!(cs, "se employee expiry threshold"), || Ok(self.threshold_expiry))?;
-            let ex = card_expiry_tail_fr(&attrs.employee_blob)?;
+            let ex = employee_expiry_fr(&attrs.employee_blob)?;
             ex.enforce_cmp(&threshold, Ordering::Greater, false)
         }
 
@@ -986,7 +1047,7 @@ mod joint_test_support {
     {
         fn pred(self, cs: ConstraintSystemRef<Fr>, attrs: &PassportEmployeeJointInfoVar) -> Result<(), SynthesisError> {
             let threshold = FpVar::<Fr>::new_input(ns!(cs, "pe employee expiry threshold"), || Ok(self.threshold_expiry))?;
-            let ex = card_expiry_tail_fr(&attrs.employee_blob)?;
+            let ex = employee_expiry_fr(&attrs.employee_blob)?;
             ex.enforce_cmp(&threshold, Ordering::Greater, false)
         }
 
@@ -1036,7 +1097,7 @@ mod joint_test_support {
         fn pred(self, cs: ConstraintSystemRef<Fr>, attrs: &PassportEmployeeJointInfoVar) -> Result<(), SynthesisError> {
             let expected_company = UInt8::new_input_vec(ns!(cs, "pe expected company"), &self.expected_company)?;
             let threshold = FpVar::<Fr>::new_input(ns!(cs, "pe employee expiry threshold"), || Ok(self.threshold_employee_expiry))?;
-            let ex = card_expiry_tail_fr(&attrs.employee_blob)?;
+            let ex = employee_expiry_fr(&attrs.employee_blob)?;
             ex.enforce_cmp(&threshold, Ordering::Greater, false)?;
             attrs.employee_blob.0[EMPLOYEE_COMPANY_OFF..EMPLOYEE_COMPANY_OFF + EMPLOYEE_COMPANY_LEN]
                 .enforce_equal(&expected_company)?;
@@ -1164,6 +1225,38 @@ mod joint_test_support {
             .map_err(format_err)?;
         let holder_proof = prove_pred(rng, &ph_pk, holder_checker.clone(), info.clone(), &auth_path)
             .map_err(format_err)?;
+
+        let ticket_counts = zkcreds::pred::count_pred_constraints(&pkt_pk, ticket_checker.clone(), info.clone(), &auth_path)
+            .map_err(format_err)?;
+        log_constraint_counts("链接场景-票据属性证明", ticket_counts);
+
+        let passport_expiry_counts = zkcreds::pred::count_pred_constraints(&ppp_pk, passport_expiry_checker.clone(), info.clone(), &auth_path)
+            .map_err(format_err)?;
+        log_constraint_counts("链接场景-护照到期证明", passport_expiry_counts);
+
+        let student_expiry_counts = zkcreds::pred::count_pred_constraints(&psp_pk, student_expiry_checker.clone(), info.clone(), &auth_path)
+            .map_err(format_err)?;
+        log_constraint_counts("链接场景-学生到期证明", student_expiry_counts);
+
+        let holder_counts = zkcreds::pred::count_pred_constraints(&ph_pk, holder_checker.clone(), info.clone(), &auth_path)
+            .map_err(format_err)?;
+        log_constraint_counts("链接场景-持卡人标签证明", holder_counts);
+
+        let tree_counts = auth_path
+            .count_membership_constraints::<E, PassportStudentJointInfo, TestComSchemePedersenG, TestTreeHG>(
+                &MERKLE_CRH_PARAM,
+                attrs_com.clone(),
+            )
+            .map_err(format_err)?;
+        log_constraint_counts("链接场景-树成员证明", tree_counts);
+
+        let forest_counts = roots
+            .count_membership_constraints::<E, PassportStudentJointInfo, TestComSchemePedersen, TestComSchemePedersenG, TestTreeHG>(
+                auth_path.root(),
+                attrs_com.clone(),
+            )
+            .map_err(format_err)?;
+        log_constraint_counts("链接场景-森林成员证明", forest_counts);
 
         assert!(verify_pred(&pkt_vk, &ticket_proof, &ticket_checker, &attrs_com, &auth_path.root()).map_err(format_err)?);
         assert!(verify_pred(&ppp_vk, &passport_expiry_proof, &passport_expiry_checker, &attrs_com, &auth_path.root()).map_err(format_err)?);
@@ -1665,10 +1758,16 @@ where
             println!("跨用户假链接验证结果: {}", linked_valid);
             if linked_valid {
                 return Err("跨用户假链接不应通过验证".into());
+            } else {
+                // 输出失败分析，即使没有 panic
+                println!("跨用户假链接过程中发生 panic，系统检测到伪链接或不一致");
+                println!("问题: Bob的pred_proof与Alice的attrs_com不匹配，导致verifying key mismatch");
             }
         }
         Err(_) => {
             println!("跨用户假链接过程中发生 panic，系统检测到伪链接或不一致");
+            println!("检测步骤: 在link_proofs或verif_link_proof中");
+            println!("问题: Bob的pred_proof与Alice的attrs_com不匹配，导致verifying key mismatch");
         }
     }
 

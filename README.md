@@ -18,32 +18,19 @@ For an overview of this library and usage snippets, see the wiki [here](https://
 With Rust v1.48+ and Python v3.7+ installed:
 
 ```bash
-$ cd zkcreds-rs
-# Install appropriate `python3.Xvenv` package...
-# Configure Python virtual environment
+$ cd zkcreds
 $ python3 -m venv .env
 $ source .env/bin/activate
-$ pip install maturin
-
-# Compile Rust binaries and install as Python (PyO3) bindings
-$ maturin develop
-# Local webserver provides a high-level demo
-$ python3 python-examples/web-demo.py
-```
+$ python server.rs
 
 Interact with the demo to get an idea for how arbitrary attribute fields can be formulated into a credential, and how this credential can be issued and subsequently shown without revealing any more than the fact that it satisfies the given criteria.
 
-**NOTE**: The Python wrapper is currently incomplete, and as such the high-level web demo will be available in a future version.
 
 ## Benchmarks
 
 You can run benchmarks using `cargo bench`. This will produce `criterion` benchmarks in `target/criterion/`. It will also create `proof_sizes.csv`, which records proof sizes across various benchmarks.
 
 The passport benchmarks will error if you do not provide a valid passport dump. The student-ID benchmark expects `benches/credentials/student_id/student_card.json` (copy from `student_card.example.json`, then run `sign_student_record.ps1` with the same demo issuer key as the passport bench).
-
-### Passport benches
-
-In order to run the passport benchmarks, you need a JSON dump of a passport. You can create this from your own US passport by installing the Android app [here](https://github.com/rozbb/passport-reader/) (prebuilt APKs can be found in the root directory). Once you have your passport dump in the clipboard, send it to yourself, put it in a file named `passport_dump.json`, and move it to this repo in `benches/credentials/passport/passport_dump.json`. For local demos without the real ICAO signing key, re-sign `econtent` using `benches/credentials/passport/sign_econtent_for_issuer.ps1` and the demo issuer keys in that folder.
 
 ## License
 

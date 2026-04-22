@@ -7,7 +7,7 @@ use crate::{
         constraints::SparseMerkleTreePathVar, SparseMerkleTree, SparseMerkleTreePath,
         SparseMerkleTreeWireFormat,
     },
-    zk_utils::{IdentityCRH, IdentityCRHGadget, UnitVar},
+    zk_utils::{count_constraints, IdentityCRH, IdentityCRHGadget, UnitVar},
 };
 
 use core::marker::PhantomData;
@@ -272,6 +272,30 @@ where
             proof,
             _marker: PhantomData,
         })
+    }
+
+    pub fn count_membership_constraints<E, A, ACG, HG>(
+        &self,
+        two_to_one_params: &H::Parameters,
+        attrs_com: AC::Output,
+    ) -> Result<(usize, usize, usize), SynthesisError>
+    where
+        E: PairingEngine<Fr = ConstraintF>,
+        A: Attrs<E::Fr, AC>,
+        ACG: CommitmentGadget<AC, E::Fr>,
+        HG: TwoToOneCRHGadget<H, E::Fr>,
+    {
+        let root = self.path.root.clone();
+        let prover: TreeMembershipProver<E::Fr, AC, ACG, H, HG> = TreeMembershipProver {
+            height: self.path.height(),
+            crh_param: two_to_one_params.clone(),
+            attrs_com,
+            root,
+            auth_path: Some(self.path.clone()),
+            _marker: PhantomData,
+        };
+
+        count_constraints(prover)
     }
 }
 

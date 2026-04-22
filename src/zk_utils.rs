@@ -16,8 +16,18 @@ use ark_r1cs_std::{
     uint8::UInt8,
     R1CSVar, ToBytesGadget, ToConstraintFieldGadget,
 };
-use ark_relations::r1cs::{ConstraintSystemRef, Namespace, SynthesisError};
+use ark_relations::r1cs::{ConstraintSystem, ConstraintSystemRef, ConstraintSynthesizer, Namespace, SynthesisError};
 use ark_std::rand::Rng;
+
+pub fn count_constraints<ConstraintF, C>(circuit: C) -> Result<(usize, usize, usize), SynthesisError>
+where
+    ConstraintF: PrimeField,
+    C: ConstraintSynthesizer<ConstraintF>,
+{
+    let cs = ConstraintSystem::<ConstraintF>::new_ref();
+    circuit.generate_constraints(cs.clone())?;
+    Ok((cs.num_constraints(), cs.num_witness_variables(), cs.num_instance_variables()))
+}
 
 // 这个CRH是输入的恒等函数
 pub struct IdentityCRH;
