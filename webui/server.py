@@ -42,6 +42,23 @@ def _as_int(value, default=0):
         return default
 
 
+def _build_commitment(attrs, revoked=False):
+    payload = {
+        "attrs": attrs,
+        "revoked": revoked,
+    }
+    return f"0xcommit_{abs(hash(json.dumps(payload, sort_keys=True))) % 10**10:010d}"
+
+
+def _build_merkle_root(credential_id, commitment, revoked=False):
+    payload = {
+        "credential": credential_id,
+        "commitment": commitment,
+        "revoked": revoked,
+    }
+    return f"0xroot_{abs(hash(json.dumps(payload, sort_keys=True))) % 10**8:08d}"
+
+
 def _check_student_employee(attrs):
     ok = True
     reasons = []
@@ -207,7 +224,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             attrs = payload.get("attrs", {})
             if not isinstance(attrs, dict):
                 return self.send_json({"error": "`attrs` 必须是 JSON 对象"}, code=400)
-            commitment = f"0xcommit_{abs(hash(json.dumps(attrs, sort_keys=True))) % 10**10:010d}"
+            commitment = _build_commitment(attrs, revoked=False)
             STATE["attrs"] = attrs
             STATE["commitment"] = commitment
             STATE["credential_id"] = None
@@ -233,7 +250,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 return self.send_json(
                     {"error": "请先签发凭证"}, code=400
                 )
-            root = f"0xroot_{abs(hash(STATE['credential_id'])) % 10**8:08d}"
+            root = _build_merkle_root(
+                STATE["credential_id"],
+                STATE["commitment"],
+                STATE["revoked"],
+            )
             STATE["merkle_root"] = root
             return self.send_json({"root": root})
         if parsed.path == "/api/prove":
@@ -287,10 +308,19 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             if not STATE["credential_id"]:
                 return self.send_json({"error": "当前没有可撤销的已签发凭证"}, code=400)
             STATE["revoked"] = True
+            # 撤销后重算承诺值，保证与未撤销状态区分。
+            STATE["commitment"] = _build_commitment(STATE["attrs"], revoked=True)
+            STATE["merkle_root"] = _build_merkle_root(
+                STATE["credential_id"],
+                STATE["commitment"],
+                STATE["revoked"],
+            )
             return self.send_json(
                 {
                     "revoked": True,
                     "credential": STATE["credential_id"],
+                    "commitment": STATE["commitment"],
+                    "root": STATE["merkle_root"],
                     "message": "发行方已撤销凭证",
                 }
             )

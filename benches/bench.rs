@@ -26,7 +26,7 @@ criterion_group!(
     bench_joint_passport_student,
     bench_joint_passport_employee,
     bench_cross_credential,
-    
+    /*
     bench_empty,
     com_scaling::bench_pred_proof_0::bench_pred_proof_0,
     com_scaling::bench_pred_proof_16::bench_pred_proof_16,
@@ -45,6 +45,6 @@ criterion_group!(
     com_scaling::bench_pred_proof_224::bench_pred_proof_224,
     com_scaling::bench_pred_proof_240::bench_pred_proof_240,
     com_scaling::bench_pred_proof_256::bench_pred_proof_256
-    
+    */
 );
 criterion_main!(setup, benches, microbenches);
